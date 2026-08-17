@@ -38,6 +38,24 @@ Check for controls outside the handler:
 **High-static**. Only live-probe-confirmed findings can be **High-verified**.
 Critical severity requires High-verified confidence.
 
+### Step 3.5: Skeptic Pass (mandatory for High-verified / High-static)
+
+Before writing the finding, spawn a fresh-context hostile reviewer with ONLY
+the claim (never your reasoning). It hunts for the killing compensating
+control and returns `VERDICT: upheld|weakened|killed`:
+
+- `upheld` → write as classified
+- `weakened` → write with severity −1 level and confidence capped at High-static
+- `killed` → no finding; fingerprint into `.red-team/fp-history.yaml`
+  (`discarded_by: skeptic`) + one line in `suspicious.md`
+
+Record in the finding: flat key `skeptic_review: <verdict|skipped-no-harness>`
+plus a `## Skeptic Review` body section (verdict, decisive artifact, rationale).
+No subagent harness available → `skeptic_review: skipped-no-harness` and the
+body section must name ≥3 concrete artifact paths checked and found absent.
+Full prompt template and calibration rules:
+[skeptic-review.md](skeptic-review.md).
+
 **Important**: if you haven't read the handler code, confidence is automatically
 Low. Always read the handler before classifying.
 
@@ -136,6 +154,7 @@ target_version:
   git_sha: a1b2c3d4e5f6...     # Resolved at scan time
   dirty: false                  # Uncommitted changes at scan time?
 skill_version: paladin-probe@v2
+skeptic_review: upheld           # optional flat key: upheld | weakened | killed | skipped-no-harness (see Step 3.5)
 evidence:                       # Present only if live-probe confirmed
   captured_at: 2026-07-28T12:34:56Z
   captured_by: probe-wrapper
@@ -216,6 +235,8 @@ Before marking the finding as complete, the agent MUST verify:
 - [ ] Empty `standards: []` is a flag — populate before marking Open
 - [ ] `False Positive` findings have `severity: N/A` (not Critical/High/Medium/Low/Info)
 - [ ] `High-verified` findings include a populated `evidence:` block in frontmatter
+- [ ] High-verified/High-static findings carry `skeptic_review:` with a verdict
+      (or `skipped-no-harness` + a ≥3-artifact-path trace in `## Skeptic Review`)
 - [ ] If `evidence/RT-NNN/` exists but is empty, write `evidence/RT-NNN/SKIPPED.md` explaining why
 
 Live-probe evidence is captured by `scripts/probe.sh` (execute it, never read it)

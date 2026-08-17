@@ -5,7 +5,7 @@ description: >
   Probes for business logic abuse, auth bypass, input validation flaws, config
   hardening gaps, and dependency vulnerabilities. Outputs security requirements
   for dev skills to implement — does not write code or tests.
-allowed-tools: Read, Bash, Grep, Glob, Write, Edit
+allowed-tools: Read, Bash, Grep, Glob, Write, Edit, Task
 ---
 
 # Paladin Probe — Experimental Red-Team Skill
@@ -89,6 +89,15 @@ PROBE DETECTS SOMETHING SUSPICIOUS
       Low:           pattern matches but likely handled
          │
          ▼
+   3.5 SKEPTIC PASS (fresh-context subagent)
+      High-verified/High-static only — before writing. A hostile reviewer
+      with ONLY the claim hunts for the killing compensating control.
+      upheld   → write as classified
+      weakened → severity −1, confidence capped at High-static
+      killed   → no finding; fingerprint into fp-history.yaml
+      (see references/skeptic-review.md — prompt template + recording rules)
+         │
+         ▼
    4. OUTPUT
       High-verified  → Write finding, counts toward "Open" total
       High-static    → Write finding, listed as "Static-Only (Pending Verification)"
@@ -108,6 +117,11 @@ PROBE DETECTS SOMETHING SUSPICIOUS
 **Confidence ceiling**: Static-only analysis (no live probe) caps at **High-static**.
 Only live-probe execution can produce **High-verified**. Critical severity requires
 High-verified confidence.
+
+**Skeptic gate**: No `High-verified` or `High-static` finding is written until a
+fresh-context skeptic subagent has tried to kill it — see
+[references/skeptic-review.md](references/skeptic-review.md) for the prompt
+template, verdict semantics, and recording rules.
 
 ## Flat Config Schema
 
@@ -776,6 +790,7 @@ stack_profile:
 | `references/cross-skill-contract.md` | ALWAYS | Phase D integration — traceability, re-verify protocol, file contracts |
 | `references/secrets-exposure.md` | ALWAYS | Every session — scanning for secrets in code/git/bundles |
 | `references/grader-fixes.md` | ROUTED | Only the sections matching FAIL/WARN check IDs (see its Usage note) |
+| `references/skeptic-review.md` | CONDITIONAL | Once, before writing the first High-verified/High-static finding — skeptic prompt template + verdict protocol |
 | `references/attack-surface-mapping.md` | CONDITIONAL | Only if the surface is unknown after repo scan (RECON start) |
 | `references/threat-modeling.md` | CONDITIONAL | Only if STRIDE modeling for this target is non-obvious |
 | `references/xxe.md` | CONDITIONAL | Only when probing XML — classic, blind, XInclude, SVG/DOCX/SAML, SSRF, DoS |
