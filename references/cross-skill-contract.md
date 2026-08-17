@@ -275,6 +275,14 @@ Re-verification starts when:
 TRIGGER
    │
    ▼
+0. (Session-wide triggers only — /probe re-verify without an RT-id,
+   /probe verify-all) Derive findings fresh BEFORE reading prior artifacts:
+   run RECON → MODEL → PROBE → VERIFY blind, grade the fresh pass, THEN
+   diff against priors (New/Confirmed/Healed/Regressed/Escalated). See
+   SKILL.md "Fresh-Derive-Then-Diff". Targeted RT-NNN triggers skip this
+   and start at 1.
+   │
+   ▼
 1. Read finding RT-NNN — get location, requirements, acceptance_criteria
    │
    ▼

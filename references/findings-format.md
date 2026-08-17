@@ -100,6 +100,11 @@ the diff's blast radius instead of rebuilding the full threat model:
 This prevents generating noise from pre-existing vulnerabilities unrelated to
 the change being reviewed.
 
+> **Re-verification is the mirror case:** when re-running against changed
+> code, derive findings fresh BEFORE opening prior findings/REPORT/threat-model,
+> then diff (New/Confirmed/Healed/Regressed/Escalated). See SKILL.md
+> "Fresh-Derive-Then-Diff".
+
 ### False Positive History
 
 Maintain `.red-team/fp-history.yaml` to avoid reprocessing known false
