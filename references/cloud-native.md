@@ -3,7 +3,7 @@
 **Purpose:** Comprehensive reference for testing cloud-native application security — container/K8s misconfigurations, IaC flaws, RBAC abuse, sidecar/proxy bypass, service mesh, serverless, pod escape, supply chain, and cloud metadata SSRF.
 
 **Schema version:** 1  
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

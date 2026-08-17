@@ -3,7 +3,7 @@
 **Purpose:** Comprehensive reference for testing session management — cookie security, fixation, hijacking, JWT handling, logout, timeout, concurrent sessions, and Supabase SSR specifics.
 
 **Schema version:** 1  
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

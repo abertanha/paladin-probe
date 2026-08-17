@@ -3,7 +3,7 @@
 **Purpose:** Comprehensive reference for testing GraphQL API security — discovery, introspection, schema recovery, injection, authorization flaws, batching, DoS, subscriptions, CSRF, and engine-specific quirks.
 
 **Schema version:** 1  
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

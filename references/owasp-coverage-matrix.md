@@ -3,7 +3,7 @@
 **Purpose:** Canonical crosswalk between OWASP Top 10 2025, OWASP WSTG categories, and paladin-probe reference files. This is the single source of truth for mapping — referenced by `findings-format.md` for the `standards:` field, by `threat-modeling.md` for risk taxonomy, and by agents to look up IDs before writing findings.
 
 **Schema version:** 1
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

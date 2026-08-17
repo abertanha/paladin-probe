@@ -5,7 +5,7 @@
 **OWASP crosswalk:** A02 (Security Misconfiguration), A10 (Mishandling Exceptional Conditions), WSTG-4.8.x, ASVS V7.4.x, CWE-209, CWE-215, CWE-532
 
 **Schema version:** 1
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

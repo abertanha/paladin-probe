@@ -158,7 +158,7 @@ exploited_in_wild: false        # Known active exploitation in the wild
 target_version:
   git_sha: a1b2c3d4e5f6...     # Resolved at scan time
   dirty: false                  # Uncommitted changes at scan time?
-skill_version: paladin-probe@v2
+skill_version: paladin-probe@v3
 skeptic_review: upheld           # optional flat key: upheld | weakened | killed | skipped-no-harness (see Step 3.5)
 evidence:                       # Present only if live-probe confirmed
   captured_at: 2026-07-28T12:34:56Z

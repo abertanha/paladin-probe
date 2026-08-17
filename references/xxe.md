@@ -3,7 +3,7 @@
 **Purpose:** Comprehensive reference for testing XML External Entity injection — classic, blind/OOB, error-based, XInclude, SVG/DOCX/SAML/SOAP, SSRF chaining, DoS, parser-specific bypasses, and prevention per language.
 
 **Schema version:** 1  
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

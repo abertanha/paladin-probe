@@ -5,7 +5,7 @@
 **OWASP crosswalk:** A07 (Authentication Failures), WSTG-4.3.x, ASVS V2.1.x, CWE-204, CWE-266, CWE-269
 
 **Schema version:** 1
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

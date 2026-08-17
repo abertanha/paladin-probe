@@ -416,7 +416,7 @@ evidence files: a listed file changed after capture, or is missing.
 2. Add at the top (after any comment lines, below `---` if present):
    ```yaml
    schema_version: 2
-   skill_version: paladin-probe@v2
+   skill_version: paladin-probe@v3
    ```
 3. Save.
 

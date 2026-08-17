@@ -5,7 +5,7 @@
 **OWASP crosswalk:** A09 (Security Logging and Alerting Failures), WSTG not directly mapped (acknowledged gap), ASVS V7.x, CWE-223, CWE-532, CWE-778
 
 **Schema version:** 1
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

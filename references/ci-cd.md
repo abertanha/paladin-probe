@@ -3,7 +3,7 @@
 **Purpose:** Comprehensive reference for testing CI/CD pipeline security — pipeline injection, artifact poisoning, secret exposure, RBAC escalation, supply chain attacks, infrastructure-as-pipeline, and environment separation.
 
 **Schema version:** 1  
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

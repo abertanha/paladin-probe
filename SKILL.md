@@ -140,7 +140,7 @@ All `.red-team/config.yaml` files MUST include at the top:
 
 ```yaml
 schema_version: 2
-skill_version: paladin-probe@v2
+skill_version: paladin-probe@v3
 ```
 
 The grader (check G5.3) validates both fields exist. `schema_version` tracks the
@@ -217,6 +217,7 @@ scripts/probe.sh check                                  # resolved consent, no n
 scripts/probe.sh send --rt RT-003 --method GET --url U  # one consented request
 scripts/probe.sh diff --rt RT-003 --method GET \
   --url 'https://t/api/{{page}}' --var page=admin --var-base page=profile
+scripts/probe.sh capture --rt RT-003 --kind serverlog -- 'tail -n 200 /var/log/app/api.log'
 scripts/probe.sh verify                                 # recheck all manifests
 ```
 
@@ -409,7 +410,7 @@ exploited_in_wild: false
 target_version:
   git_sha: a1b2c3d4e5f6...
   dirty: false
-skill_version: paladin-probe@v2
+skill_version: paladin-probe@v3
 evidence:
   captured_at: 2026-07-28T12:34:56Z
   captured_by: probe-wrapper
@@ -505,10 +506,15 @@ dev skills consume.
 ├── suspicious.md                   # Medium-confidence items (manual review)
 ├── surface.md                      # Attack surface
 ├── threat-model.md                 # STRIDE model
-├── evidence/                       # Live-probe HTTP capture artifacts
+├── evidence/                       # Wrapper-captured artifacts (manifest-hashed)
 │   └── RT-NNN/
 │       ├── <timestamp>-request.http
-│       └── <timestamp>-response.http
+│       ├── <timestamp>-response.http
+│       ├── <timestamp>-diff.txt                # probe.sh diff (differential oracle)
+│       ├── <timestamp>-<kind>.instrumented.md  # probe.sh capture
+│       └── SKIPPED.md                          # if the probe was intentionally skipped
+├── chains/                         # /probe chain artifacts
+│   └── CH-NNN.md
 ├── findings/                       # Full detail per finding
 │   ├── YYYY-MM-DD_rt-NNN.md
 │   └── index.md
@@ -563,7 +569,7 @@ The grader (G5.2) validates it against the findings — the format below is REQU
 
 **Probe Date:** YYYY-MM-DD
 **Target:** <url or "local">
-**Skill Version:** paladin-probe@v2
+**Skill Version:** paladin-probe@v3
 **Method:** <one line: "Read-only + code analysis" | "Live probes + code analysis" | ...> (effort: <standard|deep|exhaustive>)
 
 ## Summary
@@ -821,7 +827,7 @@ session complete.
 | G1 | Finding frontmatter integrity (required keys, schema_version, FP/Duplicate severity, confidence/evidence consistency, duplicate detection WARN, canonical category vocabulary WARN, skeptic-review completeness WARN) |
 | G2 | Cross-artifact consistency (index/report/ID alignment, traceability.json completeness & schema version, AC/DP arrays match remediation, heading casing) |
 | G3 | Export closure (CSV/SARIF/VEX row counts, VEX status mapping, VEX cve vs aliases rule, export freshness vs findings) |
-| G4 | Evidence cleanliness (non-empty evidence dirs, X-Paladin-Probe header presence, manifest.sha256 integrity WARN) |
+| G4 | Evidence cleanliness (High-verified evidence = `.http` pair or instrumented capture, non-empty evidence dirs, X-Paladin-Probe header presence, manifest.sha256 integrity WARN) |
 | G5 | Surface hygiene (threat-model coverage + semantic row context, REPORT.md count/title reconciliation, config.yaml schema fields, probe-date consistency, surface.md content, threat-model category coverage, attack-chain integrity WARN) |
 
 ### Fix-routine reference

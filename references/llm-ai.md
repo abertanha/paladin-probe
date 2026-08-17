@@ -3,7 +3,7 @@
 **Purpose:** Comprehensive reference for testing AI/LLM application security — prompt injection (direct/indirect), jailbreaking, data leakage, model evasion, RAG poisoning, tool/plugin abuse, agent hijacking, supply chain, and API security.
 
 **Schema version:** 1  
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

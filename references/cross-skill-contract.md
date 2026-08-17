@@ -3,7 +3,7 @@
 **Purpose:** Defines the data exchange contracts, file protocols, and bidirectional traceability between paladin-probe and other opencode skills.
 
 **Schema version:** 2  
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 

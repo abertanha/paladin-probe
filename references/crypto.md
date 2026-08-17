@@ -5,7 +5,7 @@
 **OWASP crosswalk:** A04 (Cryptographic Failures), WSTG-4.9.x, ASVS V6.x, CWE-295, CWE-326, CWE-327, CWE-338
 
 **Schema version:** 1
-**Skill version:** paladin-probe@v2
+**Skill version:** paladin-probe@v3
 
 ---
 
