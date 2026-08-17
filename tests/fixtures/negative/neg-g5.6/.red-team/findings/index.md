@@ -9,10 +9,10 @@ It is the GOLD-STANDARD all-passing fixture: the grader must report
 
 | Finding | Status | Severity | Confidence  | G1 G2 G3 G4 G5 |
 |---|---|---|---|---|
-| RT-001 | False Positive | N/A | Verified | PASS all |
+| RT-001 | False Positive | N/A | Low | PASS all |
 | RT-002 | Open | High | High-verified | PASS all |
 | RT-003 | Open | Medium | High-static | PASS all |
-| RT-004 | False Positive | N/A | Verified | PASS all |
+| RT-004 | False Positive | N/A | Low | PASS all |
 
 ## Cross-artifacts
 

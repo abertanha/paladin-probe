@@ -18,7 +18,7 @@
                 "level": "none"
               },
               "properties": {
-                "category": "Information Disclosure",
+                "category": "Secrets Exposure",
                 "precision": "very-high"
               }
             },
@@ -32,7 +32,7 @@
                 "level": "error"
               },
               "properties": {
-                "category": "Security Misconfiguration",
+                "category": "Config Hardening",
                 "precision": "very-high"
               }
             },
@@ -46,7 +46,7 @@
                 "level": "warning"
               },
               "properties": {
-                "category": "Security Misconfiguration",
+                "category": "Config Hardening",
                 "precision": "very-high"
               }
             },
@@ -60,7 +60,7 @@
                 "level": "none"
               },
               "properties": {
-                "category": "Injection",
+                "category": "Input Validation",
                 "precision": "very-high"
       }
     }

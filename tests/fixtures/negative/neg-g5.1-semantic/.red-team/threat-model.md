@@ -10,17 +10,17 @@ This document catalogs threats for the sample application.
 
 | Category | Threat | Risk | Finding |
 |----------|--------|------|---------|
-| Security Misconfiguration | CORS wildcard permits arbitrary cross-origin requests | High | RT-002 |
-| Security Misconfiguration | Missing Content-Security-Policy header on all responses | High | RT-002 |
+| Config Hardening | CORS wildcard permits arbitrary cross-origin requests | High | RT-002 |
+| Config Hardening | Missing Content-Security-Policy header on all responses | High | RT-002 |
 
 ### RT-003 — Debug endpoints enabled in production
 
 | Category | Threat | Risk | Finding |
 |----------|--------|------|---------|
-| Security Misconfiguration | Debug endpoints /debug/pprof and /debug/vars exposed in production | Medium | RT-003 |
-| Security Misconfiguration | DoS vector via debug endpoints in production | Medium | RT-003 |
+| Config Hardening | Debug endpoints /debug/pprof and /debug/vars exposed in production | Medium | RT-003 |
+| Config Hardening | DoS vector via debug endpoints in production | Medium | RT-003 |
 
 ## False Positives
 
-- **RT-001** — API key leaked in logs: Observed in log review, information disclosure review only, not reproducible.
-- **RT-004** — SQL injection via username field: Parameterized queries confirmed in code, injection not present.
+- **RT-001** — API key leaked in logs: Observed in log review, secrets exposure review — not reproducible.
+- **RT-004** — SQL injection via username field: input validation review — parameterized queries confirmed in code, injection not present.

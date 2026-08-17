@@ -6,10 +6,10 @@ This directory is a synthetic fixture for the paladin-probe self-audit grader.
 
 | Finding | Status | Severity | Confidence        | G1 G2 G3 G4 G5 |
 |---|---|---|---|---|
-| RT-001 | False Positive | N/A | Verified | PASS G1.4 |
+| RT-001 | False Positive | N/A | Low | PASS G1.4 |
 | RT-002 | Open | High | High-verified | PASS all G1 |
 | RT-003 | Open | Medium | (missing) | FAIL G1.1 |
-| RT-004 | False Positive | Critical | Verified | FAIL G1.4 |
+| RT-004 | False Positive | Critical | Low | FAIL G1.4 |
 
 ## Cross-artifacts
 
