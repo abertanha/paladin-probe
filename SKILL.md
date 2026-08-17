@@ -54,10 +54,10 @@ gates
    - If live requests are denied, confidence caps at **High-static** automatically
 4. Save config to `.red-team/config.yaml`
 
-During live probe execution, before the first `curl` is sent, re-display a compact
-summary to the user:
-> "Live probe about to send [N] requests to [target URL] — consent given at [timestamp].
-> Routes: [routes]. Mutating: [yes/no]. Confirm or abort (ctrl+c)."
+Before the first live request, show the user the wrapper's resolved consent
+state (`bash scripts/probe.sh check` prints it) and the planned probe count:
+> "Live probe about to send [N] requests to [target URL] — consent: live=[true/false],
+> mutating=[yes/no], skip_routes=[list]. Confirm or abort."
 
 ## Verification Protocol
 
@@ -122,10 +122,13 @@ The grader (check G5.3) validates both fields exist. `schema_version` tracks the
 config schema itself; `skill_version` identifies which skill version wrote the
 config.
 
-## Live Probe Protocol (Agent-Driven)
+## Live Probe Protocol (Wrapper-Driven)
 
-This protocol governs sending actual HTTP requests to verify findings at runtime.
-It is executed via opencode Bash tool with `curl` — no separate script.
+Live probes are executed through `scripts/probe.sh` — a wrapper that mechanically
+enforces consent, throttling, and evidence capture, so agent turns go to analysis,
+not ceremony. Invoke it via Bash; parse its one-line stdout.
+
+> **Treat `probe.sh` like `tests/grader.py` — execute it, never read it.**
 
 ### When to run
 
@@ -135,48 +138,66 @@ Run live probe **only** after:
 3. User has explicitly granted consent (see Onboarding consent checklist)
 4. Target is confirmed reachable and responding
 
-### Protocol steps
+### The wrapper enforces
 
-1. **Pre-check**: Read `config.yaml.consent.live_requests`. If `false`, refuse to send
-   any request and prompt user to update consent. Read `skip_routes[]` and refuse
-   any URL matching those patterns.
+Never re-implement these by hand — hand-rolled `curl` bypassing the wrapper is a
+protocol violation:
 
-2. **Throttle**: Insert `sleep 1` between requests to the same endpoint. If the
-   target returns HTTP 429, apply exponential backoff: `sleep 2`, `sleep 4`,
-   `sleep 8` — max 3 retries per request, then abort the session for that endpoint.
+- **Consent gates** — refuses before any send: `consent.live_requests` not true
+  (exit 2), URL matches `skip_routes` (exit 3), mutating verb while
+  `consent.destructive_tests: false` (exit 4). No flag overrides these.
+- **Traceability** — injects non-overridable `X-Paladin-Probe: v3` and
+  `User-Agent: paladin-probe/v3` on every request.
+- **Idempotency** — auto-generates `X-Paladin-Probe-Idempotency` on mutating
+  verbs (or reuses `--idempotency-key` across retries of one probe).
+- **Throttle** — per-host minimum gap from `throttle_seconds` (default 1s).
+- **429 backoff** — sleeps 2/4/8s, max 3 retries, then aborts the endpoint (exit 5).
+- **5xx circuit breaker** — >30% 5xx over ≥4 requests in any rolling 60s aborts
+  the session, writes `.red-team/sessions/<date>_abort.md`, and refuses the host
+  for 10 minutes (exit 7).
+- **Evidence capture** — writes `evidence/<RT-NNN>/<ts>-request.http` (full
+  headers + first 4096B body) and `<ts>-response.http` (status + headers +
+  first 1000B body), hashes both into `manifest.sha256`. Same-second sends get
+  collision-proof suffixes.
 
-3. **Traceability**: Every request MUST include header `X-Paladin-Probe: v2`.
+Exit codes: 0 ok · 2/3/4 consent · 5 429-exhausted · 6 transport · 7 breaker ·
+8 usage · 9 evidence-write · 10 manifest drift. Full options: `probe.sh --help`.
 
-4. **Evidence capture**: Before any `curl` invocation, prepare the evidence path:
-   ```
-   .red-team/evidence/<RT-NNN>/<timestamp>-request.http
-   .red-team/evidence/<RT-NNN>/<timestamp>-response.http
-   ```
-    The request file contains the exact curl command and request headers. The
-    response file contains HTTP status, headers, and first 1000 chars of body.
+### The agent does
 
-    **SKIPPED.md rule:** If a probe category is intentionally skipped (e.g.,
-    consent denied, target unreachable, no applicable endpoints), the agent MUST
-    write `evidence/RT-NNN/SKIPPED.md` explaining why. Empty evidence directories
-    are flagged by the grader (G4.2).
+```bash
+scripts/probe.sh check                                  # resolved consent, no network
+scripts/probe.sh send --rt RT-003 --method GET --url U  # one consented request
+scripts/probe.sh diff --rt RT-003 --method GET \
+  --url 'https://t/api/{{page}}' --var page=admin --var-base page=profile
+scripts/probe.sh verify                                 # recheck all manifests
+```
 
-5. **Safety**:
-   - State-mutating requests (POST/PUT/DELETE) MUST include an idempotency-key
-     header (e.g., `X-Paladin-Probe-Idempotency: <uuid>`). The agent MUST check
-     for cleanup templates in the relevant `references/<category>.md` before
-     sending any mutating request.
-   - If the target returns HTTP 5xx on more than 30% of requests in any rolling
-     60-second window, **abort the session** immediately and write
-     `.red-team/sessions/<date>_abort.md` with the error dump.
-   - If `config.yaml.consent.destructive_tests: false`, state-mutating requests
-     are automatically blocked.
+- **Choose what to probe** — the wrapper has no opinion.
+- **`diff` = differential oracle.** Sends a baseline (with `--var-base` values,
+  unknown `{{KEY}}` tokens stripped so it is always sendable) then a follow-up
+  (with `--var` values), normalizes volatile headers (Date, Set-Cookie, ETag,
+  Server, Content-Length, …), and writes `<ts>-diff.txt`. `delta=identical`
+  where you expected divergence is a **negative result** — record it in the
+  finding; do not discard it.
+- **Before trusting any prior evidence**, run `verify` (exit 10 = tampering).
+- **Before any mutating request**, check for cleanup templates in the relevant
+  `references/<category>.md` — the wrapper can't know cleanup semantics.
 
-6. **Post-probe**: After all live probes complete:
-   - Update each finding's frontmatter `evidence:` block with the captured data
-   - Promote confidence from `High-static` to `High-verified` (if confirmed)
-   - Demote to `Closed (FP — compensating control demonstrated)` (if control blocked)
-   - Regenerate REPORT.md with the new "Static-Only (Pending Verification)" separation
-   - Regenerate exports (CSV, SARIF, VEX) **only if** a finding's frontmatter `status` or `confidence` was changed — appending re-verification notes alone does not trigger regen
+**SKIPPED.md rule:** If a probe category is intentionally skipped (e.g., consent
+denied, target unreachable, no applicable endpoints), the agent MUST write
+`evidence/RT-NNN/SKIPPED.md` explaining why. Empty evidence directories are
+flagged by the grader (G4.2). (Not wrapper-enforced — skipping is a decision.)
+
+### Post-probe
+
+After all live probes complete:
+- Update each finding's frontmatter `evidence:` block with the captured data
+  (`capture_method: probe-wrapper` by default)
+- Promote confidence from `High-static` to `High-verified` (if confirmed)
+- Demote to `Closed (FP — compensating control demonstrated)` (if control blocked)
+- Regenerate REPORT.md with the new "Static-Only (Pending Verification)" separation
+- Regenerate exports (CSV, SARIF, VEX) **only if** a finding's frontmatter `status` or `confidence` was changed — appending re-verification notes alone does not trigger regen
 
 ## Context Discovery
 
@@ -313,11 +334,11 @@ target_version:
 skill_version: paladin-probe@v2
 evidence:
   captured_at: 2026-07-28T12:34:56Z
-  captured_by: agent-bash-curl
-  request: "curl -X POST https://target/api/login -d '...' -H 'X-Paladin-Probe: v2'"
+  captured_by: probe-wrapper
+  request: .red-team/evidence/RT-003/2026-07-28T12-34-56Z-request.http
   response_status: 200
   response_excerpt: "HTTP 200 OK — no rate-limit headers present"
-  capture_method: agent-bash-curl
+  capture_method: probe-wrapper
 standards:
   - framework: OWASP-ASVS
     requirement_id: V3.5.1
@@ -657,6 +678,8 @@ avoid burning context on implementation detail:
    `WARN G5.1`). Each names a check ID — route that ID to
    `references/grader-fixes.md` (see its Usage note) and read only the matching
    section. Ignore `PASS` lines after the first full pass.
+4. **Same rule for `scripts/probe.sh`** — execute it via Bash, never read its
+   source. Its one-line stdout and exit codes are the whole contract.
 
 ## Self-Audit Loop (Grade → Fix → Re-Grade)
 

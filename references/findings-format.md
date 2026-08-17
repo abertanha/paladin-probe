@@ -138,11 +138,11 @@ target_version:
 skill_version: paladin-probe@v2
 evidence:                       # Present only if live-probe confirmed
   captured_at: 2026-07-28T12:34:56Z
-  captured_by: agent-bash-curl
-  request: "curl -X POST https://target/api/login -d '...' -H 'X-Paladin-Probe: v2'"
+  captured_by: probe-wrapper
+  request: .red-team/evidence/RT-003/2026-07-28T12-34-56Z-request.http
   response_status: 200
   response_excerpt: "HTTP 200 OK — no rate-limit headers present"
-  capture_method: agent-bash-curl  # agent-bash-curl | replay | manual
+  capture_method: probe-wrapper   # probe-wrapper | instrumented-log | instrumented-db | instrumented-test | agent-bash-curl (legacy) | replay | manual
 standards:                      # Compliance framework mappings — MAX 5 ROWS
   - framework: OWASP-Top-2025
     requirement_id: A02
@@ -218,9 +218,13 @@ Before marking the finding as complete, the agent MUST verify:
 - [ ] `High-verified` findings include a populated `evidence:` block in frontmatter
 - [ ] If `evidence/RT-NNN/` exists but is empty, write `evidence/RT-NNN/SKIPPED.md` explaining why
 
-When live-probe is executed, evidence is written to `.red-team/evidence/<RT-NNN>/<timestamp>-request.http`
-and `<timestamp>-response.http`. These raw HTTP captures serve as auditable proof of reproduction.
-The frontmatter `evidence:` block references the key capture.
+Live-probe evidence is captured by `scripts/probe.sh` (execute it, never read it)
+into `.red-team/evidence/<RT-NNN>/<timestamp>-request.http` and
+`<timestamp>-response.http`, hashed into `manifest.sha256`. Differential probes
+additionally write `<timestamp>-diff.txt`. These raw captures serve as auditable
+proof of reproduction; the frontmatter `evidence:` block references the key
+capture. Set `capture_method: probe-wrapper` (default) unless the evidence came
+from another source in the vocabulary above.
 
 ## Functional Requirements
 
