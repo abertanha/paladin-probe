@@ -42,9 +42,13 @@ auth       score      deps        confidence   ask user
 gates
 ```
 
+Effort (`config.yaml: effort`, default `standard`) scales hypotheses per
+endpoint, chain depth, and revisit policy — see "Effort knob" under Flat
+Config Schema.
+
 ## Onboarding (first activation)
 
-1. Ask: environment (dev/staging/prod?), skip-list (`skip_routes`), intensity (dry-run/cautious/aggressive)
+1. Ask: environment (dev/staging/prod?), skip-list (`skip_routes`), intensity (dry-run/cautious/aggressive), effort (standard/deep/exhaustive)
 2. Auto-detect: package manager, test framework, web framework, auth strategy
 3. Present consent checklist before starting:
    - [ ] Live HTTP requests allowed? (required for High-verified confidence)
@@ -138,6 +142,28 @@ skill_version: paladin-probe@v2
 The grader (check G5.3) validates both fields exist. `schema_version` tracks the
 config schema itself; `skill_version` identifies which skill version wrote the
 config.
+
+### Effort knob
+
+Optional config key (absent = `standard`; no schema implication — G5.3 ignores it):
+
+```yaml
+effort: deep                   # standard | deep | exhaustive
+```
+
+| Dimension | standard | deep | exhaustive |
+|-----------|----------|------|------------|
+| Hypotheses per endpoint | 3 | 6 | 10 |
+| Chain depth (`/probe chain`) | 2 | 4 | 6 |
+| Revisit policy | none | re-probe High-static findings after the grader loop | + re-scan Fixed findings for regressions |
+| Reference loading | adjacent categories only | any reference a live hypothesis enters (log each) | any, plus re-read on surface change |
+| Skeptic pass | per finding | per finding | per finding, re-run on verdict conflicts |
+
+Higher effort buys depth, not speed: it scales how many hypotheses you generate
+per endpoint and how far chains are pursued — the two levers that actually
+exercise multi-step reasoning. `standard` is the default; do not select
+`exhaustive` without consent for the extra request volume it implies.
+`probe.sh check` prints the resolved level.
 
 ## Live Probe Protocol (Wrapper-Driven)
 
@@ -503,7 +529,7 @@ The grader (G5.2) validates it against the findings — the format below is REQU
 **Probe Date:** YYYY-MM-DD
 **Target:** <url or "local">
 **Skill Version:** paladin-probe@v2
-**Method:** <one line: "Read-only + code analysis" | "Live probes + code analysis" | ...>
+**Method:** <one line: "Read-only + code analysis" | "Live probes + code analysis" | ...> (effort: <standard|deep|exhaustive>)
 
 ## Summary
 
