@@ -25,6 +25,7 @@ Dev skills handle implementation.
 | `/probe report` | Either | Consolidate all findings into requirements spec |
 | `/probe re-verify` | Either | Re-run probes for Fixed/Regressed findings against current code |
 | `/probe verify-all` | Either | Re-derive all findings from scratch, then diff against priors |
+| `/probe chain [asset]` | Chain | Multi-stage exploitation chains from prior findings (≥2 findings in ≥2 categories) |
 | `/probe export` | Either | Regenerate CSV/SARIF/VEX exports from current findings |
 
 Auto-suggest: when PR touches auth, deps, or security config, suggest `/probe quick`.
@@ -787,7 +788,7 @@ session complete.
 | G2 | Cross-artifact consistency (index/report/ID alignment, traceability.json completeness & schema version, AC/DP arrays match remediation, heading casing) |
 | G3 | Export closure (CSV/SARIF/VEX row counts, VEX status mapping, VEX cve vs aliases rule, export freshness vs findings) |
 | G4 | Evidence cleanliness (non-empty evidence dirs, X-Paladin-Probe header presence, manifest.sha256 integrity WARN) |
-| G5 | Surface hygiene (threat-model coverage + semantic row context, REPORT.md count/title reconciliation, config.yaml schema fields, probe-date consistency, surface.md content, threat-model category coverage) |
+| G5 | Surface hygiene (threat-model coverage + semantic row context, REPORT.md count/title reconciliation, config.yaml schema fields, probe-date consistency, surface.md content, threat-model category coverage, attack-chain integrity WARN) |
 
 ### Fix-routine reference
 
@@ -842,6 +843,9 @@ stack_profile:
 - MUST NOT pre-load references for categories outside the detected stack/scope.
 - MUST NOT read the same reference twice in one session; re-read only if the
   probe surface changes.
+- **Exception (the only one):** during `/probe chain` pursuit, load ANY
+  reference a live hypothesis enters — log every off-discipline load in
+  `sessions/<date>_chain.md` (see [references/attack-chains.md](references/attack-chains.md)).
 
 | Reference | Load status | Load when |
 |------|-------------|-----------|
@@ -851,6 +855,7 @@ stack_profile:
 | `references/secrets-exposure.md` | ALWAYS | Every session — scanning for secrets in code/git/bundles |
 | `references/grader-fixes.md` | ROUTED | Only the sections matching FAIL/WARN check IDs (see its Usage note) |
 | `references/skeptic-review.md` | CONDITIONAL | Once, before writing the first High-verified/High-static finding — skeptic prompt template + verdict protocol |
+| `references/attack-chains.md` | CONDITIONAL | `/probe chain` sessions — tree-driven multi-stage exploitation, heuristics catalog, CH-NNN artifact |
 | `references/attack-surface-mapping.md` | CONDITIONAL | Only if the surface is unknown after repo scan (RECON start) |
 | `references/threat-modeling.md` | CONDITIONAL | Only if STRIDE modeling for this target is non-obvious |
 | `references/xxe.md` | CONDITIONAL | Only when probing XML — classic, blind, XInclude, SVG/DOCX/SAML, SSRF, DoS |

@@ -116,6 +116,11 @@ Attack Tree (if severity ≥ High):
     3. Race condition during payment
        a. Modify order between approval and capture
 
+> This tree is a REPORT artifact here. During `/probe chain` the same format
+> becomes the working DRIVER of the probe — every node a tagged, testable
+> hypothesis traversed depth-first with per-link evidence. See
+> [attack-chains.md](attack-chains.md).
+
 Risk Score:
   Likelihood: 3/5 (authenticated endpoint but common flaws)
   Impact: 4/5 (financial data)

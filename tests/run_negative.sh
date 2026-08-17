@@ -45,6 +45,7 @@ check "neg-g5.2" "G5.2" "FAIL" "REPORT summary count divergence"
 check "neg-g5.4" "G5.4" "WARN" "divergent probe dates"
 check "neg-g5.6" "G5.6" "FAIL" "surface.md without endpoint structure"
 check "neg-g5.7" "G5.7" "WARN" "threat-model missing finding category"
+check "neg-g5.8" "G5.8" "WARN" "chain links reference unknown finding"
 
 echo ""
 echo "============================="

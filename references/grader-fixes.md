@@ -458,6 +458,25 @@ recognizable `/path` reference.
 
 ---
 
+### G5.8 — Attack-chain integrity (WARN)
+
+Evaluated only when chains exist (a `chains/CH-*.md` doc or any finding with a
+`chain:` key). The WARN names either a `chain:` value with no matching
+`chains/CH-NNN.md`, or a chain doc whose `links:` name an RT-id that doesn't
+exist in `findings/`.
+
+**Fix:**
+
+1. **Missing chain doc** — either write the missing `chains/CH-NNN.md`
+   (format in [attack-chains.md](attack-chains.md)), or remove the stale
+   `chain:` key from the finding's frontmatter.
+2. **Unknown RT-id in links** — fix the typo to the real finding id, or remove
+   the id from `links:`. A link to a finding you only *planned* is a step-row
+   without evidence, not a link. Never leave a dangling RT-id anywhere (G2.1
+   regexes RT-NNN ids in REPORT.md).
+
+---
+
 ### G5.7 — Threat-model missing finding categories (WARN)
 
 **Fix:** Edit `threat-model.md` so every `category` value used in

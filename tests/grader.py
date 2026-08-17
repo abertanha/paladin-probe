@@ -1010,6 +1010,40 @@ class Grader:
             self.emit("G5.7", "PASS",
                       f"threat-model.md covers all {len(finding_categories)} finding categories")
 
+        # G5.8 — attack-chain integrity (WARN; silent when no chains exist).
+        # Findings' flat `chain:` key must resolve to a real chains/CH-NNN.md,
+        # and every RT-id in a chain doc's `links:` must exist in findings/.
+        findings = self._findings()
+        finding_ids = set(findings.keys())
+        chains_dir = self.rt / "chains"
+        chain_refs = sorted({
+            v for fd in findings.values()
+            if (v := fd["fm"].get("chain"))
+        })
+        problems = []
+        if chain_refs or chains_dir.exists():
+            for ch in chain_refs:
+                ch_file = chains_dir / f"{ch}.md"
+                if not ch_file.exists():
+                    problems.append(f"{ch}: referenced by findings but chains/{ch}.md missing")
+            if chains_dir.exists():
+                for ch_file in sorted(chains_dir.glob("CH-*.md")):
+                    ch_id = ch_file.stem
+                    ch_fm = parse_frontmatter(read(ch_file) or "") or {}
+                    ch_links = ch_fm.get("links")
+                    for link in ch_links if isinstance(ch_links, list) else []:
+                        link = str(link).strip()
+                        if link and link not in finding_ids:
+                            problems.append(f"{ch_id}: links reference unknown finding {link}")
+        if problems:
+            self.emit("G5.8", "WARN",
+                      f"attack-chain integrity: {problems[:5]}"
+                      + (f" (+{len(problems) - 5} more)" if len(problems) > 5 else ""))
+        elif chain_refs or chains_dir.exists():
+            n_docs = len(list(chains_dir.glob('CH-*.md')))
+            self.emit("G5.8", "PASS",
+                      f"{n_docs} chain doc(s); all chain: refs resolve and links point at real findings")
+
         self.emit("G5", "PASS", "Threat model & surface hygiene checks complete")
 
     # ── Main ────────────────────────────────────────────────────────────
