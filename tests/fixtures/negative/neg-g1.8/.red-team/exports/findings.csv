@@ -1,0 +1,6 @@
+id,title,category,severity,cwe,status,confidence,location,detection_difficulty
+RT-001,"API key leaked in logs",Information Disclosure,N/A,CWE-532,False Positive,Verified,/var/log/app/api.log,Easy
+RT-002,"Missing rate limiting on /auth endpoints",Security Misconfiguration,High,CWE-770,Open,High-verified,/auth/login,Easy
+RT-003,"Debug endpoints enabled in production",Security Misconfiguration,Medium,CWE-489,Open,High-static,/debug/pprof,Medium
+RT-004,"SQL injection via username field",Injection,N/A,CWE-89,False Positive,Verified,/api/users,Medium
+RT-005,"Rate limiting missing on /auth/token endpoints",Security Misconfiguration,High,CWE-770,Open,High-static,/auth/token,Medium

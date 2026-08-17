@@ -1,0 +1,58 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://example.com/sample/vex.json",
+  "author": "paladin-probe@v2",
+  "timestamp": "2030-01-01T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "RT-001",
+        "description": "API key leaked in logs",
+        "aliases": ["CWE:CWE-532"]
+      },
+      "products": [
+        {"@id": "pkg:github/example/sample"}
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present"
+    },
+    {
+      "vulnerability": {
+        "name": "RT-002",
+        "description": "Missing rate limiting on /auth endpoints",
+        "cve": "CVE-2024-0000",
+        "aliases": ["CWE:CWE-770"]
+      },
+      "products": [
+        {"@id": "pkg:github/example/sample"}
+      ],
+      "status": "known_affected",
+      "action_statement": "Implement rate limiting at the API gateway"
+    },
+    {
+      "vulnerability": {
+        "name": "RT-003",
+        "description": "Debug endpoints enabled in production",
+        "aliases": ["CWE:CWE-489"]
+      },
+      "products": [
+        {"@id": "pkg:github/example/sample"}
+      ],
+      "status": "under_investigation",
+      "justification": "high_static_only"
+    },
+    {
+      "vulnerability": {
+        "name": "RT-004",
+        "description": "SQL injection via username field",
+        "aliases": ["CWE:CWE-89"]
+      },
+      "products": [
+        {"@id": "pkg:github/example/sample"}
+      ],
+      "status": "not_affected",
+      "justification": "code_not_reachable"
+    }
+  ]
+}

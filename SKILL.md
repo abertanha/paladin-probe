@@ -1,0 +1,784 @@
+---
+name: paladin-probe
+description: >
+  Experimental red-team skill for adversarial application security testing.
+  Probes for business logic abuse, auth bypass, input validation flaws, config
+  hardening gaps, and dependency vulnerabilities. Outputs security requirements
+  for dev skills to implement — does not write code or tests.
+allowed-tools: Read, Bash, Grep, Glob, Write, Edit
+---
+
+# Paladin Probe — Experimental Red-Team Skill
+
+Adversarial testing for application security. Answers "how can I break this?"
+— not "does this work?" — by thinking like an attacker who knows the codebase.
+Output is security requirements grounded in project conventions, not code.
+Dev skills handle implementation.
+
+## Trigger Modes
+
+| Trigger | Mode | Behavior |
+|---------|------|----------|
+| `/probe pentest` | Pentest | Full scan: surface mapping → probe every category → report |
+| `/probe quick <path>` | Pentest | Scan single path for deps + config + input flaws |
+| `/probe model` | Either | Generate STRIDE threat model only |
+| `/probe report` | Either | Consolidate all findings into requirements spec |
+
+Auto-suggest: when PR touches auth, deps, or security config, suggest `/probe quick`.
+
+## Workflow
+
+```
+RECON      MODEL      PROBE       VERIFY       CONTEXT       REPORT
+──────────────────────────────────────────────────────────────────────────
+routes     STRIDE     auth        read code    discover      findings/
+deps       per        logic       trace        docs          requirements.md
+configs    endpoint   input       controls     extract       decision_points
+schemas    risk       config      classify     conventions
+auth       score      deps        confidence   ask user
+gates
+```
+
+## Onboarding (first activation)
+
+1. Ask: environment (dev/staging/prod?), skip-list (`skip_routes`), intensity (dry-run/cautious/aggressive)
+2. Auto-detect: package manager, test framework, web framework, auth strategy
+3. Present consent checklist before starting:
+   - [ ] Live HTTP requests allowed? (required for High-verified confidence)
+   - [ ] Destructive tests allowed? (state-mutating POST/PUT/DELETE)
+   - [ ] Routes to probe: [`list all detected routes`]
+   - [ ] Routes to skip: [`from user input`]
+   - [ ] Environment: [`dev | staging | prod`]
+   - [ ] OOB callbacks allowed? (for blind SSRF/XXE/SQLi confirmation)
+   - [ ] Abort on 5xx? (slams brakes if target misbehaves)
+   - If live requests are denied, confidence caps at **High-static** automatically
+4. Save config to `.red-team/config.yaml`
+
+During live probe execution, before the first `curl` is sent, re-display a compact
+summary to the user:
+> "Live probe about to send [N] requests to [target URL] — consent given at [timestamp].
+> Routes: [routes]. Mutating: [yes/no]. Confirm or abort (ctrl+c)."
+
+## Verification Protocol
+
+Before any finding is written, the agent must verify it. This prevents false
+positives by ensuring the vulnerable path is actually reachable.
+
+### Pipeline
+
+```
+PROBE DETECTS SOMETHING SUSPICIOUS
+        │
+        ▼
+  1. READ THE HANDLER CODE IN FULL
+     - Not just the route — the entire handler function
+     - Look for: validation guards, DB constraints, state checks
+        │
+        ▼
+  2. TRACE COMPENSATING CONTROLS
+     - Middleware that validates input upstream?
+     - DB-level constraints (UNIQUE, CHECK, FK)?
+     - State machine preventing the transition?
+     - Tests covering this exact edge case?
+        │
+        ▼
+   3. CLASSIFY CONFIDENCE
+      High-verified: code confirms vuln + live-probe evidence captured
+      High-static:   code confirms vuln, no compensating control, no live evidence
+      Medium:        pattern matches but partial guard exists
+      Low:           pattern matches but likely handled
+         │
+         ▼
+   4. OUTPUT
+      High-verified  → Write finding, counts toward "Open" total
+      High-static    → Write finding, listed as "Static-Only (Pending Verification)"
+      Medium         → Add to "Suspicious" section in report, not a finding
+      Low            → Skip entirely
+```
+
+### When to Skip vs. Report
+
+| Confidence | Action |
+|------------|--------|
+| High-verified | Write finding + requirements. Appears in "Open" count in REPORT.md summary. |
+| High-static | Write finding + requirements. Appears in "Static-Only (Pending Verification)" line — NOT in main "Open" count. |
+| Medium | Log in `.red-team/suspicious.md` for manual review — no finding |
+| Low | Discard silently |
+
+**Confidence ceiling**: Static-only analysis (no live probe) caps at **High-static**.
+Only live-probe execution can produce **High-verified**. Critical severity requires
+High-verified confidence.
+
+## Flat Config Schema
+
+All `.red-team/config.yaml` files MUST include at the top:
+
+```yaml
+schema_version: 2
+skill_version: paladin-probe@v2
+```
+
+The grader (check G5.3) validates both fields exist. `schema_version` tracks the
+config schema itself; `skill_version` identifies which skill version wrote the
+config.
+
+## Live Probe Protocol (Agent-Driven)
+
+This protocol governs sending actual HTTP requests to verify findings at runtime.
+It is executed via opencode Bash tool with `curl` — no separate script.
+
+### When to run
+
+Run live probe **only** after:
+1. Static RECON → MODEL → PROBE → VERIFY pipeline has completed
+2. At least one `High-static` finding exists that needs runtime confirmation
+3. User has explicitly granted consent (see Onboarding consent checklist)
+4. Target is confirmed reachable and responding
+
+### Protocol steps
+
+1. **Pre-check**: Read `config.yaml.consent.live_requests`. If `false`, refuse to send
+   any request and prompt user to update consent. Read `skip_routes[]` and refuse
+   any URL matching those patterns.
+
+2. **Throttle**: Insert `sleep 1` between requests to the same endpoint. If the
+   target returns HTTP 429, apply exponential backoff: `sleep 2`, `sleep 4`,
+   `sleep 8` — max 3 retries per request, then abort the session for that endpoint.
+
+3. **Traceability**: Every request MUST include header `X-Paladin-Probe: v2`.
+
+4. **Evidence capture**: Before any `curl` invocation, prepare the evidence path:
+   ```
+   .red-team/evidence/<RT-NNN>/<timestamp>-request.http
+   .red-team/evidence/<RT-NNN>/<timestamp>-response.http
+   ```
+    The request file contains the exact curl command and request headers. The
+    response file contains HTTP status, headers, and first 1000 chars of body.
+
+    **SKIPPED.md rule:** If a probe category is intentionally skipped (e.g.,
+    consent denied, target unreachable, no applicable endpoints), the agent MUST
+    write `evidence/RT-NNN/SKIPPED.md` explaining why. Empty evidence directories
+    are flagged by the grader (G4.2).
+
+5. **Safety**:
+   - State-mutating requests (POST/PUT/DELETE) MUST include an idempotency-key
+     header (e.g., `X-Paladin-Probe-Idempotency: <uuid>`). The agent MUST check
+     for cleanup templates in the relevant `references/<category>.md` before
+     sending any mutating request.
+   - If the target returns HTTP 5xx on more than 30% of requests in any rolling
+     60-second window, **abort the session** immediately and write
+     `.red-team/sessions/<date>_abort.md` with the error dump.
+   - If `config.yaml.consent.destructive_tests: false`, state-mutating requests
+     are automatically blocked.
+
+6. **Post-probe**: After all live probes complete:
+   - Update each finding's frontmatter `evidence:` block with the captured data
+   - Promote confidence from `High-static` to `High-verified` (if confirmed)
+   - Demote to `Closed (FP — compensating control demonstrated)` (if control blocked)
+   - Regenerate REPORT.md with the new "Static-Only (Pending Verification)" separation
+   - Regenerate exports (CSV, SARIF, VEX) **only if** a finding's frontmatter `status` or `confidence` was changed — appending re-verification notes alone does not trigger regen
+
+## Context Discovery
+
+Before writing requirements, ground them in project conventions. This reduces
+ambiguity for dev skills consuming the findings.
+
+### Discovery sources
+
+Scan for:
+- `.specs/` — project specs, architecture, conventions (from spec-driven skill)
+- `.business-logic/` — domain rules (from domain-druid skill)
+- `docs/` — project documentation
+- `README.md`, `CONTRIBUTING.md`
+- `src/middleware/` — existing middleware patterns
+- `src/config/`, `.env.example` — env var naming conventions
+
+### Ask the user
+
+If no docs found, ask once per session:
+
+> "I found no project documentation files. Do you have any docs or convention
+> guides I should reference when writing requirements?"
+
+If user provides paths, read them and extract:
+- Domain vocabulary (e.g., "tenant" vs "organization", "order" vs "purchase")
+- Env var naming patterns (e.g., `APP_*`, `REACT_APP_*`, `ORG_*_VAR`)
+- Configuration format (env, yaml, toml, json)
+- Existing error response format (e.g., `{"error": "...", "code": NNN}`)
+- Existing middleware patterns (e.g., async middleware, decorator, interceptor)
+
+## Probe Categories
+
+### Authentication Abuse (AuthN)
+- Missing authentication on protected routes
+- Token manipulation (JWT alg none, weak secret, expired but accepted)
+- Session fixation, CSRF gaps, session prediction
+- Password reset logic flaws
+- For authorization flaws → see Authorization Abuse below
+
+### Authorization Abuse (AuthZ)
+- IDOR — accessing other users' resources by ID
+- BFLA — accessing privileged functions as regular user
+- Role escalation via JWT, body, headers, cookies
+- Excessive data exposure (sensitive fields in responses)
+- Mass assignment (overwriting protected fields)
+- See [references/authorization-abuse.md](references/authorization-abuse.md)
+
+### Business Logic Abuse
+- Workflow bypass (skip steps, reorder)
+- Race conditions (TOCTOU between check and action)
+- Negative/massive values (discounts, quantities, transfers)
+- Idempotency violations (repeat action produces different result)
+- Limit/quote bypass (pagination, rate limits, max quantities)
+
+### Input Validation
+- Injection: SQL, NoSQL, command, SSTI, LDAP, XPath
+- Path traversal (../, encoded variants)
+- Prototype pollution (JS)
+- Type coercion (string→number edge cases, NaN, Infinity)
+
+### SSRF
+- Cloud metadata endpoint access (169.254.169.254, etc.)
+- Internal network probing via URL-fetch endpoints
+- DNS rebinding, URL parsing tricks, protocol smuggling
+- See [references/ssrf.md](references/ssrf.md)
+
+### Insecure Deserialization
+- Python: pickle, joblib, dill
+- PHP: unserialize with gadget chains
+- Java: readObject, XStream, Jackson
+- Node.js: node-serialize, eval patterns
+- Ruby: YAML.load, Marshal.load
+- See [references/insecure-deserialization.md](references/insecure-deserialization.md)
+
+### Secrets Exposure
+- Hardcoded API keys, tokens, passwords in source
+- .env files and secrets in git history
+- Source map leaks exposing internal logic
+- Bundle inspection for embedded credentials
+- See [references/secrets-exposure.md](references/secrets-exposure.md)
+
+### Resource Exhaustion
+- ReDoS (catastrophic regex backtracking)
+- Large payloads, zip bombs, deep nesting
+- Unbounded pagination, expensive queries
+- Connection exhaustion, slow loris
+- See [references/resource-exhaustion.md](references/resource-exhaustion.md)
+
+### Config Hardening
+- CORS misconfiguration (origin reflection, wildcard with credentials)
+- Missing security headers (CSP, HSTS, X-Frame-Options)
+- Debug/health endpoints exposed in production
+- Rate limiting gaps
+- Error message information leakage (stack traces, SQL queries)
+- Weak cryptography (MD5 hashing, Math.random(), hardcoded keys)
+- IaC / cloud config (public S3, permissive IAM, open security groups)
+
+### Dependency Audit
+- Tier 1: Native tools (npm audit, cargo audit, pip-audit, etc.)
+- Tier 2: OSV.dev API fallback (cross-ecosystem batch query)
+- Tier 3: CISA KEV enrichment (auto-boost severity for actively exploited)
+- Tier 4: NVD enrichment only (CVSS/CWE for specific CVE)
+- EPSS prioritization (real-world exploitation probability)
+- See [references/dependency-audit.md](references/dependency-audit.md)
+
+> **Category vocabulary is canonical.** The exact category names above
+> (e.g. "Dependency Audit", "Resource Exhaustion", "Config Hardening") flow
+> verbatim into each finding's `category:` frontmatter AND into the
+> `threat-model.md` table rows. The grader (G5.7) warns when a finding
+> category never appears in the threat model; ad-hoc variants ("Dependency",
+> "DoS") trigger it.
+
+## Finding Format
+
+```yaml
+---
+schema_version: 2               # Schema version for forward compatibility
+id: RT-003
+title: Missing rate limiting on /api/login
+category: Config Hardening
+severity: High
+cwe: CWE-770
+blast_radius: Single credential compromised via brute-force
+location: src/routes/auth.ts:12-18
+detection_difficulty: Easy
+status: Open                    # Open | Fixed | Remediated | Regressed | Accepted | False Positive | Duplicate
+confidence: High-verified       # High-verified | High-static | Medium | Low
+kev_listed: false
+epss_score: null
+exploited_in_wild: false
+target_version:
+  git_sha: a1b2c3d4e5f6...
+  dirty: false
+skill_version: paladin-probe@v2
+evidence:
+  captured_at: 2026-07-28T12:34:56Z
+  captured_by: agent-bash-curl
+  request: "curl -X POST https://target/api/login -d '...' -H 'X-Paladin-Probe: v2'"
+  response_status: 200
+  response_excerpt: "HTTP 200 OK — no rate-limit headers present"
+  capture_method: agent-bash-curl
+standards:
+  - framework: OWASP-ASVS
+    requirement_id: V3.5.1
+  - framework: OWASP-API-2023
+    requirement_id: API4
+functional_requirements:
+  - Login endpoint MUST rate-limit requests per source IP
+  - Endpoint MUST return HTTP 429 after exceeding the limit
+  - Rate limit MUST reset after a defined cooling period
+non_functional_requirements:
+  - Rate limit window and threshold MUST be configurable via env vars
+  - Response MUST include standard rate-limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, Retry-After)
+  - Rate limiting MUST NOT apply to health-check or monitoring endpoints
+decision_points:
+  - id: DP-003-1
+    question: What is the rate limit threshold per IP?
+    type: value
+    context: >
+      OWASP recommends 5 requests per 15 minutes for login endpoints.
+      Project conventions and existing limits should guide the default.
+    bounds: [5, 1000] requests per window
+  - id: DP-003-2
+    question: What is the cooling window duration?
+    type: value
+    context: >
+      Must align with existing timeout conventions in the project.
+      Shorter windows are stricter but may frustrate legitimate users.
+    bounds: [1 minute, 60 minutes]
+  - id: DP-003-3
+    question: What HTTP behavior on rate limit exceeded?
+    type: choice
+    context: >
+      Project's existing error responses use JSON error bodies
+      (see src/middleware/error-handler.ts).
+    options:
+      - "429 + Retry-After header + JSON body"
+      - "429 + Retry-After header only"
+  - id: DP-003-4
+    question: Which env vars control the rate limit configuration?
+    type: convention
+    context: >
+      Project uses APP_ prefix for env vars (see .env.example).
+      Follow the same convention for naming.
+    options:
+      - APP_RATE_LIMIT_MAX
+      - APP_RATE_LIMIT_WINDOW_MS
+acceptance_criteria:
+  - 100 parallel POST /api/login from same IP → ≥95 return 429
+  - After cooling period expires, next request returns normal status
+```
+
+### Frontmatter tiers (token discipline)
+
+Emit frontmatter keys by severity tier — do not copy the full example above
+into every finding:
+
+- **Tier 1 (ALWAYS):** `schema_version`, `id`, `title`, `category`, `severity`,
+  `cwe`, `location`, `status`, `confidence`, `skill_version`, `standards`,
+  `evidence` (when live-probe confirmed), plus the requirements block
+  (`functional_requirements` / `non_functional_requirements` /
+  `decision_points` / `acceptance_criteria`) when the finding is
+  High-verified or High-static.
+- **Tier 2 (Open findings only, severity High or Medium):** `blast_radius`,
+  `detection_difficulty`, `target_version`.
+- **Tier 3 (CVE-bearing findings only, severity High or above):** `kev_listed`, `epss_score`, `exploited_in_wild`.
+
+**Rule:** Do not emit Tier 3 keys for Low/Medium findings without a CVE. Do not
+emit Tier 2 keys for `False Positive` or `Duplicate` findings — they are `N/A`
+severity, so those keys are meaningless. The grader's G1.1 required-key set is
+exactly the Tier 1 core, so a lean frontmatter can never fail G1.1.
+
+## Requirements Generation
+
+Instead of writing code or regression tests, each finding with confidence
+`High-verified` or `High-static` produces structured requirements. `High-verified`
+findings appear at the top of each severity group in `remediation-requirements.md`,
+followed by `High-static` findings labeled "(Static — pending live verification)".
+These are consolidated into `.red-team/remediation-requirements.md` — a spec that
+dev skills consume.
+
+### Requirements consolidation
+
+```
+.red-team/
+├── remediation-requirements.md    # All findings as requirements
+├── suspicious.md                   # Medium-confidence items (manual review)
+├── surface.md                      # Attack surface
+├── threat-model.md                 # STRIDE model
+├── evidence/                       # Live-probe HTTP capture artifacts
+│   └── RT-NNN/
+│       ├── <timestamp>-request.http
+│       └── <timestamp>-response.http
+├── findings/                       # Full detail per finding
+│   ├── YYYY-MM-DD_rt-NNN.md
+│   └── index.md
+└── sessions/
+    └── YYYY-MM-DD_topic.md
+```
+
+> **Date source of truth:** `REPORT.md` is the canonical probe-date artifact.
+> `surface.md` and `threat-model.md` MUST NOT carry independent probe-date lines.
+> They reference REPORT.md via `**Date:** See [REPORT.md](REPORT.md)`.
+> This prevents date drift across reports on re-verification. The grader (G5.4)
+> warns if dates diverge across the three files.
+
+### Remediation Requirements Format
+
+```markdown
+# Security Remediation Requirements
+
+## RT-003: Missing rate limiting on /api/login
+Priority: High
+Confidence: High-verified
+Evidence: `.red-team/evidence/RT-003/2026-07-28T12-34-56-response.http`
+
+### Functional
+- FR-003-1: Login endpoint MUST rate-limit per source IP
+- FR-003-2: Must return HTTP 429 after exceeding threshold
+- FR-003-3: Rate limit MUST reset after cooling period
+
+### Non-Functional
+- NFR-003-1: Configurable window/threshold via env vars
+- NFR-003-2: Standard rate-limit headers in response
+- NFR-003-3: Health endpoints excluded from rate limiting
+
+### Acceptance Criteria
+- AC-003-1: 100 parallel requests → ≥95 return 429
+- AC-003-2: After cooling → request succeeds
+
+### Decision Points
+- DP-003-1: Threshold bound [5, 1000] — pick or accept default
+- DP-003-2: Window bound [1m, 60m] — pick or accept default
+- DP-003-3: Block behavior — 429 + Retry-After + JSON body (recommended)
+- DP-003-4: Env var convention — APP_RATE_LIMIT_MAX, APP_RATE_LIMIT_WINDOW_MS
+```
+
+### REPORT.md Format
+
+`REPORT.md` is the canonical probe-date artifact and the human-facing summary.
+The grader (G5.2) validates it against the findings — the format below is REQUIRED:
+
+```markdown
+# Paladin Probe Report — <project short name>
+
+**Probe Date:** YYYY-MM-DD
+**Target:** <url or "local">
+**Skill Version:** paladin-probe@v2
+**Method:** <one line: "Read-only + code analysis" | "Live probes + code analysis" | ...>
+
+## Summary
+
+| Severity | Open | Static-Only (Pending Verification) | Fixed |
+|----------|------|-----------------------------------|-------|
+| Critical | <N>  | <N>                               | <N>   |
+| High     | <N>  | <N>                               | <N>   |
+| Medium   | <N>  | <N>                               | <N>   |
+| Low      | <N>  | <N>                               | <N>   |
+
+### Critical
+
+| ID | Title | CWE | Route |
+|----|-------|-----|-------|
+| RT-001 | <title> | CWE-NNN | <route or "n/a"> |
+
+### High
+... (same row schema)
+
+### Medium
+...
+
+### Low
+...
+
+## Remediation
+
+See [remediation-requirements.md](remediation-requirements.md) for detailed
+functional and non-functional requirements per finding.
+
+## Exports
+
+- [CSV](exports/findings.csv)
+- [SARIF](exports/findings.sarif)
+- [VEX](exports/vex.json)
+```
+
+Rules:
+
+1. **Header block is required** — `Probe Date`, `Target`, `Skill Version`, `Method`
+   (one line each). Missing fields trigger a G5.2 WARN.
+2. **Summary table is required**, with a `Severity` header row. Column layout is
+   auto-detected from the header row (`Open`, `Static-Only...`, `Fixed`) — keep the
+   column names recognizable.
+3. **Column semantics**: `Open` counts findings with `status: Open` +
+   `confidence: High-verified`; `Static-Only` counts `status: Open` +
+   `confidence: High-static`; `Fixed` counts `status: Fixed/Remediated`.
+   `Duplicate` findings are excluded from all counts. G5.2 FAILs on any count
+   divergence.
+4. **Per-severity `### <Critical|High|Medium|Low>` sections are required** when
+   findings exist at that severity. Each holds a `| ID | Title | CWE | Route |`
+   table, one row per Open/Fixed/Remediated finding. FP findings may be listed or
+   omitted — not enforced.
+5. **Title column MUST exactly match** the finding's frontmatter `title`. G5.2
+   FAILs on any divergence.
+6. **Coverage**: every Open/Fixed/Remediated finding ID MUST appear in exactly one
+   severity table row; unknown IDs in REPORT tables are flagged.
+
+## Cross-Skill Integration (Phase D)
+
+Phase D implements bidirectional traceability between paladin-probe and other
+opencode skills. See [references/cross-skill-contract.md](references/cross-skill-contract.md)
+for the full contract specification — file paths, ID binding rules, traceability
+index format, and re-verification protocol.
+
+### Integration Table
+
+| Skill | Input (paladin-probe reads) | Output (paladin-probe writes) | Protocol |
+|-------|------------------------------|-------------------------------|----------|
+| **tdd** | `.red-team/verification/RT-NNN-passed-*.md` | `.red-team/remediation-requirements.md` | tdd creates tests mapping to RT-AC-IDs. When tests pass, tdd writes verification file. Paladin-probe reads it and re-verifies the finding. |
+| **domain-druid** | `.business-logic/rules.yaml` | `.red-team/domain-rule-discoveries.yaml` | Paladin-probe reads business rules as logic-abuse probe targets. New implicit rules discovered during probes are written back for domain-druid to formalize. |
+| **observability-driven-development** | `.thoughts/odd/trace-naming.yaml` | `.red-team/span-assertions.yaml` | Paladin-probe checks span naming conventions for sensitive data leakage. Writes assertions ODD can embed in telemetry to prove controls work. |
+
+### Data Flow
+
+```
+tdd                            paladin-probe                          domain-druid
+ │                                  │                                      │
+ │  read                            │                                      │
+ │  remediation-requirements.md     │  read business rules                 │
+ │  ───────────────────────────>    │  ────────────────────────────────>   │
+ │                                  │                                      │
+ │  create tests matching RT-NNN    │  write domain rule discoveries       │
+ │                                  │  <────────────────────────────────   │
+ │  write verification/             │                                      │
+ │  RT-NNN-passed.md                │  read verification file              │
+ │  ───────────────────────────>    │  ────────────────────────────>        │
+ │                                  │                                      │
+ │                                  │  re-verify finding                   │
+ │                                  │  update status + traceability.json   │
+ │                                  │                                      │
+ │                                  │  write span-assertions.yaml          │
+ │                                  │  ──────────────────────>             │
+ │                                               ODD                       │
+```
+
+### ID Binding
+
+| Prefix | Owner | Example | Bound To |
+|--------|-------|---------|----------|
+| `RT-NNN` | paladin-probe | RT-003 | Finding |
+| `FR-NNN-N` | paladin-probe | FR-003-1 | Functional requirement |
+| `AC-NNN-N` | paladin-probe | AC-003-1 | Acceptance criterion |
+| `DP-NNN-N` | paladin-probe | DP-003-1 | Decision point |
+| `DR-NNN` | paladin-probe | DR-001 | Domain rule discovery |
+
+tdd test names MUST include the AC-ID they test. Example: `test("RT-003-AC-1: 100 parallel requests → ≥95 return 429")`.
+
+### Status Transitions on Re-Verify
+
+```
+Open ──re-verify──► Fixed (all criteria met)
+                   Regressed (vulnerability persists)
+                   Partial (some criteria met, update requirements)
+
+Fixed ──re-verify──► Fixed (no change)
+                    Regressed (fix regressed)
+
+Regressed ──re-verify──► Fixed (fix re-applied)
+                        Regressed (still broken, escalate priority)
+```
+
+## Compliance Exports (Phase E)
+
+Three standardized export formats generated from `.red-team/findings/` for external tooling.
+
+### Formats
+
+| Format | File | Schema | Consumption |
+|--------|------|--------|-------------|
+| CSV | `exports/findings.csv` | Flat table | Spreadsheets, dashboards, Excel |
+| SARIF 2.1.0 | `exports/findings.sarif` | OASIS SARIF | GitHub Code Scanning, VS Code, CI gate |
+| OpenVEX 0.2.0 | `exports/vex.json` | OpenVEX | SBOM integration, GRC platforms |
+
+### OpenVEX Status Mapping
+
+When generating VEX statements, map from the finding's `status` + `confidence` to
+the OpenVEX `status` field:
+
+| Finding Status | Finding Confidence | VEX Status |
+|---|---|---|
+| Open | High-verified | `known_affected` |
+| Open | High-static | `under_investigation` |
+| Open | Medium | `under_investigation` |
+| False Positive | any | `not_affected` |
+| Fixed / Remediated | any | `fixed` |
+| Accepted | any | `not_affected` |
+| Regressed | any | `known_affected` |
+
+**Rule:** All Open VEX statuses other than `known_affected` (i.e. `under_investigation`)
+MUST carry a `justification` field explaining why the finding isn't yet confirmed
+affected. `not_affected` MUST carry a `justification` from the OpenVEX v0.2
+vocabulary.
+
+### VEX `cve` vs `aliases` Rule
+
+The `vulnerability.cve` field is reserved for CVE identifiers only. CWE identifiers
+MUST appear in `vulnerability.aliases` prefixed with `CWE:` — e.g. `"CWE:CWE-770"`.
+The grader (G3.4) rejects any VEX file where `cve` contains a CWE id.
+
+### Generation
+
+Exports are regenerated automatically by the agent **every time a finding is
+added, modified, or removed** — not just on explicit `/probe export`. Each finding
+in `.red-team/findings/` is parsed and mapped to all three formats:
+
+- **CSV** — one row per finding with id, title, category, severity, CWE, status, confidence, location
+- **SARIF** — one `rule` per CWE + one `result` per finding; levels: error (High), warning (Medium), note (Low), none (FP)
+- **OpenVEX** — one `statement` per finding; status: `fixed`, `under_investigation`, `not_affected`
+
+### Regeneration
+
+Run `/probe export` to regenerate all three formats after any finding change.
+
+### Grader invocation protocol
+
+The grader is an execution tool, NOT reading material. Follow these rules to
+avoid burning context on implementation detail:
+
+1. **Never read `tests/grader.py` source.** Its internals change with every fix
+   cycle and are irrelevant to fixing artifacts.
+2. **Invoke via Bash only**, never by reading the file:
+
+   ```bash
+   python3 tests/grader.py <path-to-.red-team/> --verbose   # include PASS lines
+   ```
+
+3. **Parse only `FAIL` and `WARN` lines** from the output (e.g. `FAIL G5.2`,
+   `WARN G5.1`). Each names a check ID — route that ID to
+   `references/grader-fixes.md` (see its Usage note) and read only the matching
+   section. Ignore `PASS` lines after the first full pass.
+
+## Self-Audit Loop (Grade → Fix → Re-Grade)
+
+After every `/probe pentest` or `/probe re-verify` session, the agent MUST run
+the self-audit grader to validate structural integrity before declaring the
+session complete.
+
+### Loop
+
+```
+1. RUN grader.py <target>            # Grade all G1–G5 checks (see protocol above)
+2. ROUTE each FAIL/WARN ID          # Read only matching grader-fixes.md sections
+3. APPLY fixes                       # Fix each issue deterministically
+4. RE-RUN grader.py <target>         # Verify fix
+5. REPEAT steps 2–4 until all PASS and all WARN resolved   # Max 3 iterations
+6. If any FAIL remains after 3 iters → warn user, do not block
+   WARNs are auto-fix candidates — resolve them at the same priority as FAILs
+```
+
+### When to run
+
+- After writing the last finding in a `/probe pentest` session
+- After any re-verification that changes finding status
+- Manually: `python3 tests/grader.py <path-to-.red-team/>`
+
+### Grading scope
+
+| Group | What it checks |
+|-------|---------------|
+| G1 | Finding frontmatter integrity (required keys, schema_version, FP/Duplicate severity, confidence/evidence consistency, duplicate detection WARN) |
+| G2 | Cross-artifact consistency (index/report/ID alignment, traceability.json completeness & schema version, AC/DP arrays match remediation, heading casing) |
+| G3 | Export closure (CSV/SARIF/VEX row counts, VEX status mapping, VEX cve vs aliases rule, export freshness vs findings) |
+| G4 | Evidence cleanliness (non-empty evidence dirs, X-Paladin-Probe header presence) |
+| G5 | Surface hygiene (threat-model coverage + semantic row context, REPORT.md count/title reconciliation, config.yaml schema fields, probe-date consistency, surface.md content, threat-model category coverage) |
+
+### Fix-routine reference
+
+All fix procedures are documented in `references/grader-fixes.md`. The agent MUST
+consult this file before modifying any artifact — do not guess the fix.
+
+## OWASP Standards Alignment (Phase F)
+
+The skill maps all findings to OWASP standards for compliance traceability. The
+`standards:` field in each finding uses a closed vocabulary with per-framework
+regex validation (see `references/findings-format.md`).
+
+### Standards Used
+
+| Framework | Purpose | ID Format |
+|-----------|---------|-----------|
+| `OWASP-Top-2025` | OWASP Top 10 2025 risk categories | `A01`–`A10` |
+| `OWASP-WSTG` | Web Security Testing Guide sections | `WSTG-4.N.N` |
+| `OWASP-ASVS` | Application Security Verification Standard | `V.N.N.N` |
+| `OWASP-API-2023` | API Security Top 10 | `API1`–`API10` |
+| `CWE` | Common Weakness Enumeration | `CWE-NNN` |
+
+### Selection Rules
+
+Max 5 rows per finding. Priority: CWE → OWASP-Top-2025 → OWASP-WSTG →
+OWASP-ASVS → OWASP-API-2023. See `references/owasp-coverage-matrix.md` for the
+canonical per-category crosswalk.
+
+### Per-Category Set
+
+**Stack profile (write once, early):** after the initial repo/scope scan
+identifies the target stack, the agent MUST record it in `.red-team/config.yaml`
+under the optional key `stack_profile:` — it is informational only (the grader
+G5.3 validates just `schema_version` / `skill_version`), and it drives the
+reference-loading decisions below:
+
+```yaml
+stack_profile:
+  languages: [Go]
+  frameworks: [chi, PostgreSQL]
+  components: [K8s, S3, GitHub Actions]
+```
+
+**Loading discipline (MUST):**
+
+- MUST read `references/owasp-coverage-matrix.md` and `references/findings-format.md`
+  before writing the first finding.
+- MUST read `references/cross-skill-contract.md` before Phase D integration.
+- MUST read `references/secrets-exposure.md` in every session (git history scan
+  is cheap and high-signal).
+- MUST read ONLY the reference matching the category currently being probed.
+- MUST NOT pre-load references for categories outside the detected stack/scope.
+- MUST NOT read the same reference twice in one session; re-read only if the
+  probe surface changes.
+
+| Reference | Load status | Load when |
+|------|-------------|-----------|
+| `references/owasp-coverage-matrix.md` | ALWAYS | Before writing the first finding (canonical CWE/OWASP crosswalk) |
+| `references/findings-format.md` | ALWAYS | Before writing findings + requirements |
+| `references/cross-skill-contract.md` | ALWAYS | Phase D integration — traceability, re-verify protocol, file contracts |
+| `references/secrets-exposure.md` | ALWAYS | Every session — scanning for secrets in code/git/bundles |
+| `references/grader-fixes.md` | ROUTED | Only the sections matching FAIL/WARN check IDs (see its Usage note) |
+| `references/attack-surface-mapping.md` | CONDITIONAL | Only if the surface is unknown after repo scan (RECON start) |
+| `references/threat-modeling.md` | CONDITIONAL | Only if STRIDE modeling for this target is non-obvious |
+| `references/xxe.md` | CONDITIONAL | Only when probing XML — classic, blind, XInclude, SVG/DOCX/SAML, SSRF, DoS |
+| `references/auth-abuse.md` | CONDITIONAL | Only when probing authentication (AuthN) |
+| `references/authorization-abuse.md` | CONDITIONAL | Only when probing authorization (AuthZ, IDOR, BFLA) |
+| `references/business-logic-abuse.md` | CONDITIONAL | Only when probing business logic |
+| `references/ci-cd.md` | CONDITIONAL | Only when CI/CD pipeline is in scope — injection, secret exposure, artifact poisoning, RBAC |
+| `references/client-side.md` | CONDITIONAL | Only when probing DOM, CSP, postMessage, client storage |
+| `references/cloud-native.md` | CONDITIONAL | Only when K8s/cloud infra in scope — RBAC, pod escape, sidecar bypass, metadata abuse |
+| `references/http-attacks.md` | CONDITIONAL | Only when probing smuggling, cache poisoning, open redirect |
+| `references/federated-auth.md` | CONDITIONAL | Only when SAML, OAuth2, OIDC, Supabase Auth in scope |
+| `references/graphql.md` | CONDITIONAL | Only when a GraphQL endpoint is identified — introspection, injection, batching, DoS, CSRF |
+| `references/input-validation.md` | CONDITIONAL | Only when probing input boundaries beyond standard fuzzing |
+| `references/llm-ai.md` | CONDITIONAL | Only when LLM/AI features in scope — prompt injection, jailbreaking, RAG poisoning, tool abuse, extraction |
+| `references/ssrf.md` | CONDITIONAL | Only when probing server-side request forgery |
+| `references/insecure-deserialization.md` | CONDITIONAL | Only when deserialization vectors are identified |
+| `references/session-mgmt.md` | CONDITIONAL | Only when testing session management — cookie flags, fixation, hijacking, JWT, logout, timeout |
+| `references/resource-exhaustion.md` | CONDITIONAL | Only when testing DoS, ReDoS, pagination abuse |
+| `references/config-hardening.md` | CONDITIONAL | Only when auditing config, crypto, IaC/cloud |
+| `references/crypto.md` | CONDITIONAL | Only when testing cryptographic failures — TLS, weak algos, padding oracle, JWT confusion, RNG |
+| `references/dependency-audit.md` | CONDITIONAL | Only when scanning deps with tiered approach |
+| `references/error-handling.md` | CONDITIONAL | Only when probing error handling — stack traces, verbose errors, sentinel oracles; do NOT pre-load |
+| `references/identity-mgmt.md` | CONDITIONAL | Only when testing identity management — enumeration, registration abuse, deprovisioning |
+| `references/logging-alerting.md` | CONDITIONAL | Only when testing logging/alerting — audit gaps, log injection, tampering, leakage |
+
+Payloads at `payloads/`:
+- `injection-payloads.txt` — injection + SSRF payloads
+- `business-logic-scenarios.md` — domain-specific abuse + resource exhaustion scenarios
+- `fuzz-cases.json` — boundary + type confusion inputs

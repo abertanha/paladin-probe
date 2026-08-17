@@ -1,0 +1,78 @@
+{
+  "strings": [
+    "",
+    " ",
+    "\t",
+    "\n",
+    "\x00",
+    "null",
+    "undefined",
+    "NaN",
+    "Infinity",
+    "-Infinity",
+    "a",
+    "A".repeat(10000),
+    "<script>alert(1)</script>",
+    "javascript:alert(1)",
+    "../../etc/passwd",
+    "{{7*7}}"
+  ],
+  "numbers": [
+    0,
+    -0,
+    1,
+    -1,
+    0.1,
+    -0.1,
+    2147483647,
+    2147483648,
+    -2147483648,
+    -2147483649,
+    1.7976931348623157e+308,
+    5e-324,
+    "1e999",
+    "NaN",
+    "Infinity",
+    "-Infinity"
+  ],
+  "objects": [
+    null,
+    [],
+    {},
+    [null],
+    [1, 2, 3],
+    {"key": "value"},
+    {"__proto__": {"polluted": true}},
+    {"constructor": {"prototype": {"polluted": true}}}
+  ],
+  "arrays": [
+    [],
+    [null],
+    [undefined],
+    [""],
+    [["a"], ["b"], ["c"]],
+    {"length": -1},
+    {"length": 9999999}
+  ],
+  "booleans": [
+    true,
+    false,
+    "true",
+    "false",
+    "1",
+    "0",
+    1,
+    0
+  ],
+  "encoding_bypasses": [
+    "%00",
+    "%20",
+    "%0a",
+    "%0d%0a",
+    "%uff1c",
+    "%c0%ae%c0%ae",
+    "%252f",
+    "..%252f..%252f",
+    "..%c0%af..%c0%af"
+  ]
+}

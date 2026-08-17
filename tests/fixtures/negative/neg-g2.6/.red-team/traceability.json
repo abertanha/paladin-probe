@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "findings": {
+    "RT-001": {
+      "title": "API key leaked in logs",
+      "standards": ["CWE:CWE-532", "OWASP-Top-2025:A06"],
+      "requirements": [],
+      "acceptance_criteria": [],
+      "decision_points": [],
+      "domain_rules": [],
+      "tests": {"passed": [], "failed": []},
+      "status": "False Positive"
+    },
+    "RT-002": {
+      "title": "Missing rate limiting on /auth endpoints",
+      "standards": ["CWE:CWE-770", "OWASP-Top-2025:A07", "OWASP-WSTG:WSTG-BUSL-01"],
+      "requirements": ["FR-001-1"],
+      "acceptance_criteria": ["AC-001-WRONG"],
+      "decision_points": ["DP-001-1"],
+      "domain_rules": [],
+      "tests": {"passed": [], "failed": []},
+      "status": "Open"
+    },
+    "RT-003": {
+      "title": "Debug endpoints enabled in production",
+      "standards": ["CWE:CWE-489", "OWASP-Top-2025:A05"],
+      "requirements": [],
+      "acceptance_criteria": [],
+      "decision_points": [],
+      "domain_rules": [],
+      "tests": {"passed": [], "failed": []},
+      "status": "Open"
+    },
+    "RT-004": {
+      "title": "SQL injection via username field",
+      "standards": ["CWE:CWE-89", "OWASP-Top-2025:A03"],
+      "requirements": [],
+      "acceptance_criteria": [],
+      "decision_points": [],
+      "domain_rules": [],
+      "tests": {"passed": [], "failed": []},
+      "status": "False Positive"
+    }
+  },
+  "last_updated": "2026-07-29T14:00:00Z"
+}

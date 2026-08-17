@@ -1,0 +1,162 @@
+{
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "paladin-probe",
+          "version": "v2",
+          "rules": [
+            {
+              "id": "CWE-532",
+              "name": "Information Exposure Through Log Files",
+              "shortDescription": {
+                "text": "API key leaked in logs"
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "properties": {
+                "category": "Information Disclosure",
+                "precision": "very-high"
+              }
+            },
+            {
+              "id": "CWE-770",
+              "name": "Allocation of Resources Without Limits or Throttling",
+              "shortDescription": {
+                "text": "Missing rate limiting on /auth endpoints"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "category": "Security Misconfiguration",
+                "precision": "very-high"
+              }
+            },
+            {
+              "id": "CWE-489",
+              "name": "Active Debug Code",
+              "shortDescription": {
+                "text": "Debug endpoints enabled in production"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "category": "Security Misconfiguration",
+                "precision": "very-high"
+              }
+            },
+            {
+              "id": "CWE-89",
+              "name": "SQL Injection",
+              "shortDescription": {
+                "text": "SQL injection via username field"
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              },
+              "properties": {
+                "category": "Injection",
+                "precision": "very-high"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CWE-532",
+          "ruleIndex": 0,
+          "level": "none",
+          "message": {
+            "text": "API key leaked in logs"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/var/log/app/api.log"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "status": "False Positive",
+            "confidence": "Verified",
+            "standards": "CWE:CWE-532; OWASP-Top-2025:A06"
+          }
+        },
+        {
+          "ruleId": "CWE-770",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Missing rate limiting on /auth endpoints"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/auth/login"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "status": "Open",
+            "confidence": "High-verified",
+            "standards": "CWE:CWE-770; OWASP-Top-2025:A07; OWASP-WSTG:WSTG-BUSL-01"
+          }
+        },
+        {
+          "ruleId": "CWE-489",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "Debug endpoints enabled in production"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/debug/pprof"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "status": "Open",
+            "confidence": "Medium",
+            "standards": "CWE:CWE-489; OWASP-Top-2025:A05"
+          }
+        },
+        {
+          "ruleId": "CWE-89",
+          "ruleIndex": 3,
+          "level": "none",
+          "message": {
+            "text": "SQL injection via username field"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "/api/users"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "status": "False Positive",
+            "confidence": "Verified",
+            "standards": "CWE:CWE-89; OWASP-Top-2025:A03"
+          }
+        }
+      ]
+    }
+  ]
+}
