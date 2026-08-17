@@ -33,6 +33,7 @@ probe.sh — paladin-probe live-probe wrapper
 Usage:
   probe.sh send --rt RT-003 --method POST --url URL [options]
   probe.sh diff --rt RT-003 --method GET --url URL [--var K=V]... [options]
+  probe.sh capture --rt RT-003 --kind KIND -- <command...>
   probe.sh verify [--root PATH]
   probe.sh check  [--root PATH]
 
@@ -50,6 +51,24 @@ send options:
   --dry-run             Print the request and evidence paths; send nothing
   --json-out            Emit the result line as JSON instead of k=v pairs
 
+capture options (instrumented evidence — no HTTP involved):
+  --rt RT-NNN           Finding the capture supports (required, ^RT-[0-9]{3}$)
+  --kind KIND           serverlog | dbstate | test-oracle (required)
+  --                    Everything after -- is the command to run (through
+                        bash -c, so env vars and pipes work). Each kind is
+                        gated on its own consent key (absent = denied, exit 2):
+                        serverlog    log_access.method + log_access.target
+                                     — command must reference the target
+                        dbstate      db_read_access.kind + db_read_access.dsn_env
+                                     — command must reference the env var name
+                        test-oracle  test_suite_oracle.command
+                                     — command must match it exactly
+                        Output goes to evidence/<RT>/<ts>-<kind>.instrumented.md
+                        with a provenance header, secrets masked, first 8192
+                        bytes, hashed into manifest.sha256. The command's own
+                        exit code is recorded (a failing oracle is a result);
+                        capture itself exits 0.
+
 diff options (differential oracle — sends baseline then follow-up):
   --var KEY=VALUE       Substitutes {{KEY}} in url/data/headers of the
                         follow-up request (repeatable)
@@ -66,8 +85,11 @@ $PWD until a directory containing .red-team/config.yaml is found):
   --root PATH           Project dir containing .red-team/
 
 Config keys read from .red-team/config.yaml:
-  consent.live_requests     bool, default false — gate for everything
+  consent.live_requests     bool, default false — gate for everything HTTP
   consent.destructive_tests bool, default false — gates POST/PUT/DELETE/PATCH
+  log_access.method/.target consent for capture --kind serverlog
+  db_read_access.kind/.dsn_env  consent for capture --kind dbstate
+  test_suite_oracle.command consent for capture --kind test-oracle
   skip_routes               list of glob or substring patterns
   throttle_seconds          default 1, per-host minimum gap between requests
   connect_timeout           default 5 (seconds)
@@ -299,11 +321,16 @@ parse_opts() {
     SUB=""; OPT_RT=""; OPT_METHOD=""; OPT_URL=""; OPT_DATA=""; OPT_DATAFILE=""
     OPT_JSON=false; HEADERS=(); OPT_IDEM=""; OPT_LABEL=""; OPT_DRYRUN=false
     OPT_JSONOUT=false; OPT_ROOT=""; VARS=(); BASE_VARS=(); IGN=(); OPT_RAW=false
+    OPT_KIND=""; CMD=()
     PENDING=""
-    local args=("$@") first=true arg
-    for arg in "${args[@]}"; do
-        if $first; then SUB="$arg"; first=false; continue; fi
+    local args=("$@") arg i
+    for (( i=0; i<${#args[@]}; i++ )); do
+        arg="${args[$i]}"
+        if (( i == 0 )); then SUB="$arg"; continue; fi
         case "$arg" in
+            --) # everything after -- is the capture command, verbatim
+                CMD=("${args[@]:$((i + 1))}")
+                break ;;
             --rt) PENDING=rt; continue ;;
             --method) PENDING=method; continue ;;
             --url) PENDING=url; continue ;;
@@ -315,6 +342,7 @@ parse_opts() {
             --var) PENDING=var; continue ;;
             --var-base) PENDING=varbase; continue ;;
             --ignore-header) PENDING=ign; continue ;;
+            --kind) PENDING=kind; continue ;;
             --root) PENDING=root; continue ;;
             --json) OPT_JSON=true; continue ;;
             --dry-run) OPT_DRYRUN=true; continue ;;
@@ -337,6 +365,7 @@ parse_opts() {
                 var) VARS+=("$arg") ;;
                 varbase) BASE_VARS+=("$arg") ;;
                 ign) IGN+=("$arg") ;;
+                kind) OPT_KIND="$arg" ;;
             esac
             PENDING=""
         else
@@ -387,6 +416,25 @@ cmd_check() {
     echo "throttle_seconds=$(cfg_val throttle_seconds 1)"
     echo "skip_routes=${routes:-<none>}"
     echo "aborted_hosts=${aborted:- <none>}"
+    local logm logt dbk dbe tsc
+    logm="$(cfg_get log_access.method)"; logt="$(cfg_get log_access.target)"
+    dbk="$(cfg_get db_read_access.kind)"; dbe="$(cfg_get db_read_access.dsn_env)"
+    tsc="$(cfg_get test_suite_oracle.command)"
+    if [[ -n "$logm" && -n "$logt" ]]; then
+        echo "log_access=granted (method=$logm, target=$logt)"
+    else
+        echo "log_access=denied"
+    fi
+    if [[ -n "$dbk" && -n "$dbe" ]]; then
+        echo "db_read_access=granted (kind=$dbk, dsn_env=\$${dbe})"
+    else
+        echo "db_read_access=denied"
+    fi
+    if [[ -n "$tsc" ]]; then
+        echo "test_suite_oracle=granted"
+    else
+        echo "test_suite_oracle=denied"
+    fi
     $live || exit 2
     exit 0
 }
@@ -693,6 +741,103 @@ cmd_diff() {
     exit 0
 }
 
+# ---------------------------------------------------------------- cmd: capture
+
+mask_secrets() { # stdin -> stdout, obvious secrets redacted (conservative)
+    sed -E \
+        -e 's/AKIA[0-9A-Z]{16}/AKIA[REDACTED]/g' \
+        -e 's/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/eyJ[REDACTED-JWT]/g' \
+        -e 's#(://[^/@:]+):([^/@]+)@#\1:[REDACTED]@#g' \
+        -e 's/([Bb]earer )[A-Za-z0-9._-]{8,}/\1[REDACTED]/g' \
+        -e 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]pi[_-]?[Kk]ey)(["'"'"' ]?[=:][ ]?)[A-Za-z0-9._/+=-]{6,}/\1\2[REDACTED]/g' \
+        -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----.* -----END [A-Z ]*PRIVATE KEY-----/[REDACTED PRIVATE KEY BLOCK]/g' \
+        -e 's/[A-Za-z0-9+/]{40,}/[REDACTED-LONG-TOKEN]/g'
+}
+
+cmd_capture() {
+    local rt="$OPT_RT" kind="$OPT_KIND" cmd_str consent_ref
+    [[ "$rt" =~ ^RT-[0-9]{3}$ ]] || die "--rt must match RT-NNN (e.g. RT-003), got '$rt'"
+    case "$kind" in
+        serverlog|dbstate|test-oracle) ;;
+        *) die "--kind must be serverlog | dbstate | test-oracle, got '$kind'" ;;
+    esac
+    (( ${#CMD[@]} )) || die "capture requires a command after -- (see --help)"
+    resolve_root
+    cmd_str="${CMD[*]}"
+
+    case "$kind" in
+        serverlog)
+            local m t
+            m="$(cfg_get log_access.method)"; t="$(cfg_get log_access.target)"
+            if [[ -z "$m" || -z "$t" ]]; then
+                echo "probe.sh: log_access (method+target) not consented — refusing capture" >&2
+                exit 2
+            fi
+            consent_ref="log_access (method=$m, target=$t)"
+            [[ "$cmd_str" == *"$t"* ]] || die "capture command does not reference consented log_access.target '$t'"
+            ;;
+        dbstate)
+            local k e
+            k="$(cfg_get db_read_access.kind)"; e="$(cfg_get db_read_access.dsn_env)"
+            if [[ -z "$k" || -z "$e" ]]; then
+                echo "probe.sh: db_read_access (kind+dsn_env) not consented — refusing capture" >&2
+                exit 2
+            fi
+            consent_ref="db_read_access (kind=$k, dsn_env=\$${e} — value never read by the wrapper)"
+            [[ "$cmd_str" == *"$e"* ]] || die "capture command does not reference consented db_read_access.dsn_env '$e'"
+            ;;
+        test-oracle)
+            local c
+            c="$(cfg_get test_suite_oracle.command)"
+            if [[ -z "$c" ]]; then
+                echo "probe.sh: test_suite_oracle.command not consented — refusing capture" >&2
+                exit 2
+            fi
+            consent_ref="test_suite_oracle.command"
+            [[ "$cmd_str" == "$c" ]] || die "capture command must exactly match consented test_suite_oracle.command"
+            ;;
+    esac
+
+    local dir="$ROOT/.red-team/evidence/$rt" ts base n=1 out raw cmd_exit
+    mkdir -p "$dir" || { echo "probe.sh: cannot mkdir $dir" >&2; exit 9; }
+    ts="$(now_ts)"; base="$ts-$kind"
+    while [[ -e "$dir/$base.instrumented.md" ]]; do n=$(( n + 1 )); base="$ts-$kind-$n"; done
+    out="$dir/$base.instrumented.md"
+    raw="$(mktemp)"
+
+    # consent gates matched the command string; run it through bash so env
+    # vars, pipes, and redirections in the consented command work as written
+    set +e
+    bash -c "$cmd_str" > "$raw" 2>&1
+    cmd_exit=$?
+    set -e
+
+    {
+        echo "# instrumented capture — $kind"
+        echo ""
+        echo "- rt: $rt"
+        echo "- kind: $kind"
+        echo "- captured_at: $ts"
+        echo "- command: $cmd_str"
+        echo "- consent: $consent_ref"
+        echo "- cmd_exit: $cmd_exit"
+        echo "- output_bytes: $(wc -c < "$raw") (first 8192 shown)"
+        echo "- masking: AKIA keys, JWTs, URL credentials, bearer tokens, labeled"
+        echo "  secrets, private key blocks, opaque runs >=40 chars are redacted"
+        echo ""
+        echo "## output (masked)"
+        echo ""
+        echo '```'
+        mask_secrets < "$raw" | head -c 8192
+        echo ""
+        echo '```'
+    } > "$out" || { rm -f "$raw"; echo "probe.sh: cannot write $out" >&2; exit 9; }
+
+    hash_append "$dir" "$out"
+    echo "rt=$rt kind=$kind cmd_exit=$cmd_exit bytes=$(wc -c < "$raw") capture=$out"
+    rm -f "$raw"
+}
+
 # ---------------------------------------------------------------- main
 
 [[ $# -eq 0 ]] && { usage; exit 8; }
@@ -700,8 +845,9 @@ parse_opts "$@"
 case "$SUB" in
     send) cmd_send ;;
     diff) cmd_diff ;;
+    capture) cmd_capture ;;
     verify) cmd_verify ;;
     check) cmd_check ;;
     -h|--help|help) usage; exit 0 ;;
-    *) die "unknown subcommand: $SUB (send | diff | verify | check)" ;;
+    *) die "unknown subcommand: $SUB (send | diff | capture | verify | check)" ;;
 esac

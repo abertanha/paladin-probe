@@ -247,10 +247,32 @@ Before marking the finding as complete, the agent MUST verify:
 Live-probe evidence is captured by `scripts/probe.sh` (execute it, never read it)
 into `.red-team/evidence/<RT-NNN>/<timestamp>-request.http` and
 `<timestamp>-response.http`, hashed into `manifest.sha256`. Differential probes
-additionally write `<timestamp>-diff.txt`. These raw captures serve as auditable
-proof of reproduction; the frontmatter `evidence:` block references the key
-capture. Set `capture_method: probe-wrapper` (default) unless the evidence came
-from another source in the vocabulary above.
+additionally write `<timestamp>-diff.txt`, and instrumented captures
+(`probe.sh capture --kind serverlog|dbstate|test-oracle`) write
+`<timestamp>-<kind>.instrumented.md` — all manifest-hashed. These raw captures
+serve as auditable proof of reproduction; the frontmatter `evidence:` block
+references the key capture. Set `capture_method: probe-wrapper` (default)
+unless the evidence came from another source in the vocabulary above.
+
+Instrumented confirmation (log line, DB state, or test-oracle output proving
+the effect) qualifies for `confidence: High-verified` — cite the
+`.instrumented.md` file, with or without an `.http` pair:
+
+```yaml
+evidence:
+  captured_at: 2026-07-28T12:41:03Z
+  captured_by: probe-wrapper
+  request: .red-team/evidence/RT-007/2026-07-28T12-40-58Z-request.http   # the blind probe itself
+  response_status: 200
+  response_excerpt: "HTTP 200 — {\"status\": \"fetched\"} (blind: no URL echo)"
+  instrumented: .red-team/evidence/RT-007/2026-07-28T12-41-03Z-serverlog.instrumented.md
+  capture_method: instrumented-log
+```
+
+`instrumented:` is optional — include it when the decisive artifact is the
+instrumented file rather than the response. The `capture_method` value tracks
+the kind: serverlog → `instrumented-log`, dbstate → `instrumented-db`,
+test-oracle → `instrumented-test`.
 
 ## Functional Requirements
 

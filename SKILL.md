@@ -58,6 +58,9 @@ Config Schema.
    - [ ] Routes to skip: [`from user input`]
    - [ ] Environment: [`dev | staging | prod`]
    - [ ] OOB callbacks allowed? (for blind SSRF/XXE/SQLi confirmation)
+   - [ ] Instrumented reads allowed? (server logs, read-only DB, test-suite
+     oracle — granted via `log_access` / `db_read_access` / `test_suite_oracle`
+     config keys; absent = denied)
    - [ ] Abort on 5xx? (slams brakes if target misbehaves)
    - If live requests are denied, confidence caps at **High-static** automatically
 4. Save config to `.red-team/config.yaml`
@@ -227,6 +230,37 @@ scripts/probe.sh verify                                 # recheck all manifests
 - **Before trusting any prior evidence**, run `verify` (exit 10 = tampering).
 - **Before any mutating request**, check for cleanup templates in the relevant
   `references/<category>.md` — the wrapper can't know cleanup semantics.
+
+### Instrumented evidence (capture)
+
+Some hypotheses can't be closed by an HTTP pair alone — the response is blind
+(SSRF, XXE), the effect is in state (a mutating request's DB rows), or the
+oracle already exists (the project's own test suite). `probe.sh capture` runs
+a consented read-only command and records its output as evidence:
+
+```bash
+scripts/probe.sh capture --rt RT-007 --kind serverlog -- \
+  'tail -n 200 /var/log/app/api.log | grep -i outbound'
+scripts/probe.sh capture --rt RT-004 --kind dbstate -- \
+  'psql "$APP_DB_DSN" -c "select * from audit_log order by id desc limit 5"'
+scripts/probe.sh capture --rt RT-009 --kind test-oracle -- 'make test-security'
+```
+
+- **Kind-gated consent** (absent key = denied): `log_access: {method, target}`
+  for serverlog, `db_read_access: {kind, dsn_env}` for dbstate (env-var NAME
+  only — the wrapper never reads the DSN value), `test_suite_oracle:
+  {command}` for test-oracle. The command must reference the consented
+  target/env name (or match the consented command exactly for test-oracle).
+- **When:** serverlog after a blind probe (did the SSRF fetch actually fire?),
+  dbstate after a mutating request (did the row land / get rolled back?),
+  test-oracle as an independent check of a control.
+- Output: `evidence/<RT>/<ts>-<kind>.instrumented.md` — provenance header
+  (command, consent ref, exit code), secrets masked, hashed into the manifest.
+  A failing oracle command is a recorded result, not a capture failure.
+- **Instrumented confirmation qualifies for High-verified**: the evidence
+  block cites the `.http` pair and/or the `.instrumented.md` file with
+  `capture_method: instrumented-log | instrumented-db | instrumented-test`.
+  The Critical-requires-High-verified rule is unchanged.
 
 **SKIPPED.md rule:** If a probe category is intentionally skipped (e.g., consent
 denied, target unreachable, no applicable endpoints), the agent MUST write

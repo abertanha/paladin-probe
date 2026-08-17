@@ -334,6 +334,30 @@ For each affected statement in `vex.json`:
 
 ## G4.x — Evidence Cleanliness
 
+### G4.1 — High-verified finding without usable evidence
+
+A `confidence: High-verified` finding has no `evidence/RT-NNN/` directory, or
+the directory holds neither a request+response `.http` pair nor any
+`*.instrumented.md` capture. High-verified claims runtime proof — a directory
+of stray files doesn't count.
+
+**Fix — pick the path that matches how the finding was actually confirmed:**
+
+1. **Live-probe evidence** — re-run the probe through the wrapper
+   (`scripts/probe.sh send` / `diff`); it writes the `.http` pair and hashes
+   it into `manifest.sha256`. Cite the pair in the finding's `evidence:`
+   block (`capture_method: probe-wrapper`).
+2. **Instrumented evidence** — re-run the capture:
+   `scripts/probe.sh capture --rt RT-NNN --kind serverlog|dbstate|test-oracle -- <cmd>`
+   (each kind needs its own consent key in `config.yaml`). Cite the
+   `.instrumented.md` file with `capture_method: instrumented-log`,
+   `instrumented-db`, or `instrumented-test` per the kind.
+3. **Neither is possible** — the confirmation never happened at runtime.
+   Demote `confidence:` to `High-static` and drop or move the `evidence:`
+   block into the body (G1.5 WARNs on an evidence block below High-verified).
+
+---
+
 ### G4.2 — Empty evidence directory
 
 **Fix:**

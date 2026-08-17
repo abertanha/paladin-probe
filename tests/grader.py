@@ -730,10 +730,13 @@ class Grader:
                 else:
                     files = list(ev_path.iterdir())
                     has_req_resp = any(f.name.endswith("request.http") for f in files) and any(f.name.endswith("response.http") for f in files)
-                    if not has_req_resp:
-                        self.emit("G4.1", "FAIL", f"{fid}: evidence/ directory missing request+response .http files")
-                    else:
+                    has_instrumented = any(f.name.endswith(".instrumented.md") for f in files)
+                    if has_req_resp:
                         self.emit("G4.1", "PASS", f"{fid}: has evidence with request+response files")
+                    elif has_instrumented:
+                        self.emit("G4.1", "PASS", f"{fid}: has instrumented evidence capture ({sum(1 for f in files if f.name.endswith('.instrumented.md'))} .instrumented.md file(s))")
+                    else:
+                        self.emit("G4.1", "FAIL", f"{fid}: evidence/ directory missing request+response .http pair or *.instrumented.md capture")
 
         # G4.2 — Empty evidence dirs should have SKIPPED.md
         for dname in ev_dirs:
