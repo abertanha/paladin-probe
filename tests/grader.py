@@ -14,6 +14,7 @@ import re
 import sys
 import json
 import os
+import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -23,6 +24,19 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 REF_DIR = SKILL_DIR / "references"
 
 SCHEMA_VERSION_REQUIRED = 2
+
+# Canonical probe-category vocabulary. Single source of truth is the
+# "Probe Categories" section of SKILL.md — if a heading changes there,
+# change it here in the same commit.
+CANONICAL_CATEGORIES = {
+    "Authentication Abuse", "Authorization Abuse", "Business Logic",
+    "Input Validation", "SSRF", "Insecure Deserialization",
+    "Secrets Exposure", "Resource Exhaustion", "Config Hardening",
+    "Dependency Audit",
+}
+
+# Valid skeptic_review values (flat frontmatter key; see references/skeptic-review.md)
+SKEPTIC_VERDICTS = {"upheld", "weakened", "killed", "skipped-no-harness"}
 
 CLOSED_VOCAB = {"CWE", "OWASP-Top-2025", "OWASP-WSTG", "OWASP-ASVS", "OWASP-API-2023", "NIST-800-53", "PCI-DSS"}
 
@@ -406,6 +420,49 @@ class Grader:
             self.emit("G1.8", "PASS",
                       f"No duplicate finding candidates among {len(open_findings)} Open findings")
 
+        # G1.9 — canonical category vocabulary (WARN).
+        # Off-vocabulary categories (abbreviations, OWASP names, older
+        # generations of the taxonomy) silently drift the artifacts: the
+        # threat model, index, and exports then disagree with the findings.
+        offenders = sorted(
+            f"{fid}: {fd['fm'].get('category')}"
+            for fid, fd in findings.items()
+            if fd["fm"].get("category") and fd["fm"].get("category") not in CANONICAL_CATEGORIES
+        )
+        if offenders:
+            self.emit("G1.9", "WARN",
+                      f"non-canonical category values (see SKILL.md 'Probe Categories'): {offenders[:5]}"
+                      + (f" (+{len(offenders) - 5} more)" if len(offenders) > 5 else ""))
+        else:
+            self.emit("G1.9", "PASS",
+                      f"all {len(findings)} finding(s) use canonical categories")
+
+        # G1.10 — skeptic-review completeness (WARN, gated).
+        # Evaluated only when at least one finding records a skeptic_review
+        # value; sessions run without the skeptic gate stay silent.
+        with_skeptic = [fid for fid, fd in findings.items() if fd["fm"].get("skeptic_review")]
+        if with_skeptic:
+            missing = sorted(
+                fid for fid, fd in findings.items()
+                if fd["fm"].get("confidence") in ("High-verified", "High-static")
+                and not fd["fm"].get("skeptic_review")
+            )
+            invalid = sorted(
+                f"{fid}: {fd['fm'].get('skeptic_review')}"
+                for fid, fd in findings.items()
+                if fd["fm"].get("skeptic_review") and fd["fm"].get("skeptic_review") not in SKEPTIC_VERDICTS
+            )
+            if missing or invalid:
+                parts = []
+                if missing:
+                    parts.append(f"missing on {missing[:5]}")
+                if invalid:
+                    parts.append(f"invalid values {invalid[:5]}")
+                self.emit("G1.10", "WARN", "skeptic_review incomplete: " + "; ".join(parts))
+            else:
+                self.emit("G1.10", "PASS",
+                          f"skeptic_review recorded on all {len(with_skeptic)} finding(s) that carry it")
+
         self.emit("G1", "PASS", f"Checked {len(findings)} finding file(s)")
 
     # ── G2: Cross-artifact consistency ──────────────────────────────────
@@ -697,6 +754,31 @@ class Grader:
                     content = read(f)
                     if content and "X-Paladin-Probe" not in content:
                         self.emit("G4.3", "FAIL", f"evidence/{dname}/{f.name}: missing X-Paladin-Probe header")
+
+        # G4.4 — evidence manifest integrity (WARN; silent when no manifests).
+        # manifest.sha256 lines are `<sha256>  <filename>` (SHA256SUMS format,
+        # written by scripts/probe.sh). A missing file or hash mismatch means
+        # evidence was edited — or lost — after capture.
+        manifests = sorted(evidence_dir.glob("*/manifest.sha256")) if evidence_dir.exists() else []
+        drift = []
+        for mf in manifests:
+            for line in (read(mf) or "").splitlines():
+                parts = line.split(None, 1)
+                if len(parts) != 2:
+                    continue
+                expected, fname = parts[0], parts[1].strip()
+                fpath = mf.parent / fname
+                if not fpath.exists():
+                    drift.append(f"{mf.parent.name}/{fname}: missing")
+                else:
+                    actual = hashlib.sha256(fpath.read_bytes()).hexdigest()
+                    if actual != expected:
+                        drift.append(f"{mf.parent.name}/{fname}: hash mismatch")
+        if manifests and drift:
+            self.emit("G4.4", "WARN",
+                      f"evidence manifest drift (changed or missing after capture): {drift[:5]}")
+        elif manifests:
+            self.emit("G4.4", "PASS", f"all {len(manifests)} evidence manifest(s) verified")
 
         self.emit("G4", "PASS", "Evidence cleanliness checks complete")
 

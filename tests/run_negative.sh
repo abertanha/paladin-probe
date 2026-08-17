@@ -36,6 +36,7 @@ echo "============================="
 echo ""
 
 check "neg-g1.8" "G1.8" "WARN" "duplicate finding detection"
+check "neg-g1.9" "G1.9" "WARN" "abbreviated category drift"
 check "neg-g2.5" "G2.5" "FAIL" "lowercase Acceptance criteria heading"
 check "neg-g2.6" "G2.6" "FAIL" "traceability AC/DP mismatch"
 check "neg-g3.6" "G3.6" "WARN" "stale VEX timestamp"

@@ -116,7 +116,7 @@ prefix or ≥2 shared title tokens.
 
 1. **Merge** into a single finding: keep the more general `title`/`location`,
    close the other with `status: Duplicate` (severity `N/A`, confidence
-   `Verified` — G1.4 enforces N/A). Add a `duplicate_of: <RT-NNN>` line in the
+   `Low` — G1.4 enforces N/A). Add a `duplicate_of: <RT-NNN>` line in the
    body explaining the relationship.
 2. **Distinguish** them if they are genuinely different layers: edit one
    finding's `title` so it no longer shares ≥2 tokens (e.g. "Secrets in Git
@@ -125,6 +125,48 @@ prefix or ≥2 shared title tokens.
 
 After either fix, re-export CSV/SARIF/VEX and re-run the grader. A clean run
 must emit `PASS G1.8`.
+
+---
+
+### G1.9 — Non-canonical category values (WARN)
+
+The WARN lists findings whose `category:` is not one of the ten canonical
+values (see SKILL.md "Probe Categories"). Typical offenders: abbreviations
+(`Config`, `AuthZ`), OWASP names (`Security Misconfiguration`), or older
+generations of the taxonomy (`Information Disclosure`).
+
+**Fix:**
+
+1. Map the value to its canonical equivalent (e.g. `Security Misconfiguration`
+   → `Config Hardening`, `Information Disclosure` → `Secrets Exposure`,
+   `Injection` → `Input Validation`, `Dependency` → `Dependency Audit`).
+2. Change `category:` in the finding's frontmatter.
+3. Propagate the same value everywhere it appears: `threat-model.md` table
+   cells (G5.7 checks coverage by exact substring), `findings/index.md`,
+   `exports/findings.csv`, `exports/findings.sarif`.
+4. Re-run the grader — G1.9 and G5.7 must both clear.
+
+---
+
+### G1.10 — Skeptic review incomplete (WARN)
+
+Evaluated only when at least one finding carries a `skeptic_review:` key. The
+WARN names either High-verified/High-static findings missing the key, or
+findings carrying a value outside `upheld | weakened | killed |
+skipped-no-harness`.
+
+**Fix:**
+
+1. For each finding listed as missing: run the skeptic gate (see
+   [skeptic-review.md](skeptic-review.md) for the prompt template) and add the
+   flat key `skeptic_review: <verdict>` to the frontmatter, plus the
+   `## Skeptic Review` body section.
+2. If no subagent harness is available: `skeptic_review: skipped-no-harness`
+   and a `## Skeptic Review` body section naming ≥3 concrete artifact paths
+   checked and found absent.
+3. For invalid values: replace with one of the four valid verdicts (or remove
+   the key entirely if the session predates the skeptic gate — removing it on
+   every finding silences the check).
 
 ---
 
@@ -316,9 +358,27 @@ For each affected statement in `vex.json`:
 
 1. Add a line after the HTTP request line (or the first Host: header):
    ```
-   X-Paladin-Probe: v2
+   X-Paladin-Probe: v3
    ```
 2. Save the file.
+
+---
+
+### G4.4 — Evidence manifest drift (WARN)
+
+`manifest.sha256` (written by `scripts/probe.sh`) no longer matches the
+evidence files: a listed file changed after capture, or is missing.
+
+**Fix:**
+
+1. **Hash mismatch** — the evidence file was edited after capture. NEVER
+   update the manifest to match the edited file (that launders tampering).
+   Instead re-capture via `probe.sh send`/`diff`, or restore the original
+   file from version control, then re-run `probe.sh verify`.
+2. **Missing file** — restore from version control or re-run the probe that
+   produced it. If neither is possible, delete the stale manifest line and
+   note the loss in the finding's `## Evidence` body section.
+3. Re-run the grader — a clean run emits `PASS G4.4`.
 
 ---
 

@@ -726,10 +726,10 @@ session complete.
 
 | Group | What it checks |
 |-------|---------------|
-| G1 | Finding frontmatter integrity (required keys, schema_version, FP/Duplicate severity, confidence/evidence consistency, duplicate detection WARN) |
+| G1 | Finding frontmatter integrity (required keys, schema_version, FP/Duplicate severity, confidence/evidence consistency, duplicate detection WARN, canonical category vocabulary WARN, skeptic-review completeness WARN) |
 | G2 | Cross-artifact consistency (index/report/ID alignment, traceability.json completeness & schema version, AC/DP arrays match remediation, heading casing) |
 | G3 | Export closure (CSV/SARIF/VEX row counts, VEX status mapping, VEX cve vs aliases rule, export freshness vs findings) |
-| G4 | Evidence cleanliness (non-empty evidence dirs, X-Paladin-Probe header presence) |
+| G4 | Evidence cleanliness (non-empty evidence dirs, X-Paladin-Probe header presence, manifest.sha256 integrity WARN) |
 | G5 | Surface hygiene (threat-model coverage + semantic row context, REPORT.md count/title reconciliation, config.yaml schema fields, probe-date consistency, surface.md content, threat-model category coverage) |
 
 ### Fix-routine reference
