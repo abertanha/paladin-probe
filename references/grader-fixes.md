@@ -31,9 +31,14 @@ for PASS checks.
 
 1. Open the finding file (`findings/YYYY-MM-DD_rt-NNN.md`).
 2. Locate the `---` frontmatter block.
-3. Add the key `confidence:` with the appropriate value:
-   - Remediated/Fixed findings: `confidence: High` (treat as plain High since they're closed)
-   - False Positive findings: `confidence: Verified` (or omit — carryover convention)
+3. Add the key `confidence:` with a value from the closed vocabulary
+   `High-verified | High-static | Medium | Low` (bare `High` and `Verified`
+   are NOT valid values):
+   - Open findings: `High-verified` (live-probe confirmed, evidence block
+     required) or `High-static` (code-confirmed only)
+   - Remediated/Fixed findings: keep the last classification they had while
+     open (usually `High-verified` if a probe confirmed them, else `High-static`)
+   - False Positive findings: `Low` (confidence the vulnerability is real)
 4. Save the file.
 
 ---

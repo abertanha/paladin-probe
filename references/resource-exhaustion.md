@@ -94,6 +94,7 @@ GET /api/users?cursor=aaaa...bbbb  # Could force deep scans
 ## Finding Format Example
 
 ```yaml
+schema_version: 2
 id: RT-045
 title: No pagination limit on GET /api/users — one request can scan entire DB
 category: Resource Exhaustion
@@ -102,7 +103,10 @@ cwe: CWE-770
 blast_radius: Database CPU/memory exhaustion for the primary read replica
 location: src/routes/users.ts:15
 detection_difficulty: Easy
-confidence: High
+status: Open
+confidence: High-static
+skeptic_review: upheld
+skill_version: paladin-probe@v3
 functional_requirements:
   - List endpoint MUST enforce a maximum page size (≤ 100 default)
   - Server MUST reject requests exceeding the maximum page size

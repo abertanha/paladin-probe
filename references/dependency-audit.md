@@ -128,17 +128,21 @@ curl -s https://api.first.org/data/v1/epss?cve=CVE-2023-xxxxx \
 ## Finding Format
 
 ```yaml
+schema_version: 2
 id: RT-050
 title: lodash prototype pollution (CVE-2020-8203)
-category: Dependency
+category: Dependency Audit
 severity: High
 cwe: CWE-1321
 location: package-lock.json (lodash@4.17.15)
 blast_radius: Server-side object pollution via merged user input
+status: Open
+confidence: High-static
+skeptic_review: upheld
+skill_version: paladin-probe@v3
 kev_listed: false
 epss_score: 0.87
 exploited_in_wild: false
-confidence: High
 functional_requirements:
   - Upgrade lodash to version >= 4.17.21
   - Remove direct dependency if no longer used

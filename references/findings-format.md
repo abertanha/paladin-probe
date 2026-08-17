@@ -138,7 +138,7 @@ Each finding is written to `.red-team/findings/YYYY-MM-DD_rt-NNN.md`.
 schema_version: 2               # Schema version for forward compatibility
 id: RT-003
 title: Missing rate limiting on /api/login
-category: Config Hardening     # AuthN | AuthZ | Business Logic | Input Validation | SSRF | Insecure Deserialization | Secrets Exposure | Resource Exhaustion | Config Hardening | Dependency
+category: Config Hardening     # Authentication Abuse | Authorization Abuse | Business Logic | Input Validation | SSRF | Insecure Deserialization | Secrets Exposure | Resource Exhaustion | Config Hardening | Dependency Audit
 severity: High                  # Critical | High | Medium | Low | Info | N/A (FP only)
 cwe: CWE-770                    # CWE identifier
 blast_radius: Single credential compromised via brute-force

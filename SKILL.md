@@ -23,6 +23,9 @@ Dev skills handle implementation.
 | `/probe quick <path>` | Pentest | Scan single path for deps + config + input flaws |
 | `/probe model` | Either | Generate STRIDE threat model only |
 | `/probe report` | Either | Consolidate all findings into requirements spec |
+| `/probe re-verify` | Either | Re-run probes for Fixed/Regressed findings against current code |
+| `/probe verify-all` | Either | Re-derive all findings from scratch, then diff against priors |
+| `/probe export` | Either | Regenerate CSV/SARIF/VEX exports from current findings |
 
 Auto-suggest: when PR touches auth, deps, or security config, suggest `/probe quick`.
 
@@ -259,7 +262,7 @@ If user provides paths, read them and extract:
 - Mass assignment (overwriting protected fields)
 - See [references/authorization-abuse.md](references/authorization-abuse.md)
 
-### Business Logic Abuse
+### Business Logic
 - Workflow bypass (skip steps, reorder)
 - Race conditions (TOCTOU between check and action)
 - Negative/massive values (discounts, quantities, transfers)

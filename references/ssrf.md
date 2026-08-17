@@ -77,6 +77,7 @@ Even without seeing the response, check for side effects:
 ## Finding Format Example
 
 ```yaml
+schema_version: 2
 id: RT-035
 title: SSRF in /api/fetch — can access AWS metadata endpoint
 category: SSRF
@@ -85,9 +86,19 @@ cwe: CWE-918
 blast_radius: Full cloud metadata access → IAM credentials → account compromise
 location: src/routes/proxy.ts:22
 detection_difficulty: Easy
-confidence: High
+status: Open
+confidence: High-verified
+skeptic_review: upheld
+skill_version: paladin-probe@v3
 kev_listed: false
 epss_score: null
+evidence:
+  captured_at: 2026-07-28T12:34:56Z
+  captured_by: probe-wrapper
+  request: .red-team/evidence/RT-035/2026-07-28T12-34-56Z-request.http
+  response_status: 200
+  response_excerpt: "HTTP 200 — metadata response body present in captured pair (first 1000B)"
+  capture_method: probe-wrapper
 functional_requirements:
   - URL fetch endpoint MUST validate against an allowlist of permitted domains
   - Endpoint MUST block RFC 1918 private IP ranges and link-local addresses

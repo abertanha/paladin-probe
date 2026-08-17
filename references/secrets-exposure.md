@@ -68,15 +68,19 @@ trufflehog --regex --entropy=False .
 ## Finding Format Example
 
 ```yaml
+schema_version: 2
 id: RT-030
 title: AWS access key hardcoded in src/config/aws.ts
 category: Secrets Exposure
-severity: Critical
+severity: High            # escalate to Critical only once live-confirmed (High-verified)
 cwe: CWE-798
 blast_radius: Full AWS account compromise via leaked access key
 location: src/config/aws.ts:5
 detection_difficulty: Easy
-confidence: High
+status: Open
+confidence: High-static  # source-scan finding — Critical requires High-verified
+skeptic_review: upheld
+skill_version: paladin-probe@v3
 kev_listed: false
 epss_score: null
 functional_requirements:

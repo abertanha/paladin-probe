@@ -98,17 +98,28 @@ From `surface.md`, identify:
 ## Finding Format Example
 
 ```yaml
+schema_version: 2
 id: RT-020
 title: IDOR on /api/invoices — user A can read user B invoices
-category: Authorization
+category: Authorization Abuse
 severity: Critical
 cwe: CWE-639
 blast_radius: All users can read all invoices (full data breach)
 location: src/routes/invoices.ts:34
 detection_difficulty: Easy
-confidence: High
+status: Open
+confidence: High-verified
+skeptic_review: upheld
+skill_version: paladin-probe@v3
 kev_listed: false
 epss_score: null
+evidence:
+  captured_at: 2026-07-28T12:34:56Z
+  captured_by: probe-wrapper
+  request: .red-team/evidence/RT-020/2026-07-28T12-34-56Z-request.http
+  response_status: 200
+  response_excerpt: "probe.sh diff --var invoice_id=<user-B-id> --var-base invoice_id=<user-A-id> → delta=different, follow-up returns user B invoice body"
+  capture_method: probe-wrapper
 functional_requirements:
   - Invoices endpoint MUST verify the requesting user owns the invoice
   - Server MUST reject requests for invoice IDs that don't belong to the user

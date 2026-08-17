@@ -94,15 +94,19 @@ YAML is especially dangerous because `YAML.load` can instantiate arbitrary objec
 ## Finding Format Example
 
 ```yaml
+schema_version: 2
 id: RT-040
 title: Insecure deserialization via pickle.loads in data pipeline
 category: Insecure Deserialization
-severity: Critical
+severity: High            # escalate to Critical only once live-confirmed (High-verified)
 cwe: CWE-502
 blast_radius: Remote code execution on the data processing server
 location: src/workers/data_processor.py:88
-detection_difficulty: Medium
-confidence: High
+detection_difficulty: Hard
+status: Open
+confidence: High-static  # code-confirmed, not yet live-probed — Critical requires High-verified
+skeptic_review: upheld
+skill_version: paladin-probe@v3
 kev_listed: false
 epss_score: null
 functional_requirements:
