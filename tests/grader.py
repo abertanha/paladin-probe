@@ -550,10 +550,51 @@ class Grader:
                      "that", "this", "are", "was", "not", "but", "has", "had"}
         return {t for t in re.split(r"[^a-z0-9]+", title.lower()) if len(t) >= 4 and t not in STOPWORDS}
 
+    @staticmethod
+    def _frontmatter_problem(fpath):
+        """Reason string if `fpath` cannot be consumed as a finding, else None.
+
+        Files that fail here are silently dropped by `_findings()` (which only
+        keeps parseable frontmatter with an `id`). G1.0 surfaces them so an
+        unreadable finding never vanishes from the report without a trace.
+        """
+        text = read(fpath)
+        if text is None:
+            return "file unreadable"
+        fm = parse_frontmatter(text)
+        if fm is None:
+            return "no YAML frontmatter (missing --- block)"
+        if not fm:
+            return "empty frontmatter"
+        if not fm.get("id"):
+            return f"frontmatter parseable but no id (keys: {', '.join(sorted(fm))[:60]})"
+        return None
+
     def _check_g1(self):
         findings = self._findings()
-        if not findings:
+
+        # G1.0 — deterministic parse guard. Structure is the grader's job:
+        # every findings/*.md must yield a finding (parseable, non-empty
+        # frontmatter carrying an id), otherwise the file is flagged. Semantic
+        # judgment stays with the skeptic gate (fresh-context subagent) —
+        # separate roles, no redundancy. index.md is the index, not a finding.
+        finding_files = [p for p in glob_md(self.rt / "findings") if p.name != "index.md"]
+        dropped = []
+        for fpath in finding_files:
+            reason = self._frontmatter_problem(fpath)
+            if reason:
+                dropped.append(f"{fpath.name}: {reason}")
+        if dropped:
+            self.emit("G1.0", "FAIL",
+                      f"finding file(s) not parseable into a finding: {dropped[:5]}"
+                      + (f" (+{len(dropped) - 5} more)" if len(dropped) > 5 else ""))
+        elif finding_files:
+            self.emit("G1.0", "PASS",
+                      f"all {len(finding_files)} finding file(s) have parseable frontmatter with an id")
+        else:
             self.emit("G1.0", "FAIL", "No finding files found in findings/")
+
+        if not findings:
             return
 
         for fid, fdata in findings.items():
