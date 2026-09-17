@@ -52,6 +52,19 @@ REGEX_MAP = {
 
 STANDARDS_PRIORITY = ["CWE", "OWASP-Top-2025", "OWASP-WSTG", "OWASP-ASVS", "OWASP-API-2023"]
 
+# Single source of truth for the fixture sweep (grilling Q4/DRY): maps the
+# CWE of each fixture finding to its canonical standards rows, ordered by
+# STANDARDS_PRIORITY. tests/sync_standards.py regenerates findings/*.md,
+# exports/findings.sarif, and traceability.json from this — fixture edits
+# must go through the generator, never by hand. CWE-770 rate limiting maps
+# to WSTG-4.10.5 (Function limits, see references/owasp-coverage-matrix.md).
+CANONICAL_STANDARDS = {
+    "CWE-532": (("CWE", "CWE-532"), ("OWASP-Top-2025", "A06")),
+    "CWE-770": (("CWE", "CWE-770"), ("OWASP-Top-2025", "A07"), ("OWASP-WSTG", "WSTG-4.10.5")),
+    "CWE-489": (("CWE", "CWE-489"), ("OWASP-Top-2025", "A05")),
+    "CWE-89": (("CWE", "CWE-89"), ("OWASP-Top-2025", "A03")),
+}
+
 # ── YAML frontmatter parser (stdlib only, recursive by indentation) ──────
 #
 # Supports the frontmatter vocabulary of findings/ and chains/ docs:
@@ -628,7 +641,7 @@ class Grader:
                           "N/A", fm.get("severity"))
 
             # G1.5 — evidence block iff High-verified
-            has_ev = "evidence" in fm and fm["evidence"] is not None and fm["evidence"] != "null"
+            has_ev = bool(fm.get("evidence"))
             if fm.get("confidence") == "High-verified" and not has_ev:
                 self.emit("G1.5", "FAIL", f"{fid}: High-verified but no evidence block")
             elif fm.get("confidence") != "High-verified" and has_ev:

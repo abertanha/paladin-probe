@@ -22,7 +22,7 @@
       "standards": [
         "CWE:CWE-770",
         "OWASP-Top-2025:A07",
-        "OWASP-WSTG:WSTG-BUSL-01"
+        "OWASP-WSTG:WSTG-4.10.5"
       ],
       "requirements": [
         "FR-001-1"
@@ -80,7 +80,8 @@
       "title": "Rate limiting missing on /auth/token endpoints",
       "standards": [
         "CWE:CWE-770",
-        "OWASP-Top-2025:A07"
+        "OWASP-Top-2025:A07",
+        "OWASP-WSTG:WSTG-4.10.5"
       ],
       "requirements": [],
       "acceptance_criteria": [

@@ -13,7 +13,7 @@
     },
     "RT-002": {
       "title": "Missing rate limiting on /auth endpoints",
-      "standards": ["CWE:CWE-770", "OWASP-Top-2025:A07", "OWASP-WSTG:WSTG-BUSL-01"],
+      "standards": ["CWE:CWE-770", "OWASP-Top-2025:A07", "OWASP-WSTG:WSTG-4.10.5"],
       "requirements": ["FR-001-1"],
       "acceptance_criteria": ["AC-001-WRONG"],
       "decision_points": ["DP-001-1"],

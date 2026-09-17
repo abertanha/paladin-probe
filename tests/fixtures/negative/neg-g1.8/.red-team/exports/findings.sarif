@@ -115,7 +115,7 @@
           "properties": {
             "status": "Open",
             "confidence": "High-verified",
-            "standards": "CWE:CWE-770; OWASP-Top-2025:A07; OWASP-WSTG:WSTG-BUSL-01"
+            "standards": "CWE:CWE-770; OWASP-Top-2025:A07; OWASP-WSTG:WSTG-4.10.5"
           }
         },
         {
@@ -181,7 +181,7 @@
           "properties": {
             "status": "Open",
             "confidence": "High-static",
-            "standards": "CWE:CWE-770; OWASP-Top-2025:A07"
+            "standards": "CWE:CWE-770; OWASP-Top-2025:A07; OWASP-WSTG:WSTG-4.10.5"
           }
         }
       ]
