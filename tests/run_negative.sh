@@ -49,6 +49,7 @@ check "neg-g5.4" "G5.4" "WARN" "divergent probe dates"
 check "neg-g5.6" "G5.6" "FAIL" "surface.md without endpoint structure"
 check "neg-g5.7" "G5.7" "WARN" "threat-model missing finding category"
 check "neg-g5.8" "G5.8" "WARN" "chain links reference unknown finding"
+check "neg-g5.9" "G5.9" "FAIL" "chain skill_version drifted from VERSION"
 
 echo ""
 echo "============================="

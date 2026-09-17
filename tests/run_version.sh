@@ -2,7 +2,9 @@
 # Version single-source regression (ticket 04): VERSION is the source of truth
 # and paladin-probe@v<N> is always derived. Asserts:
 #   1. wrapper (probe.sh) derives PROBE_VERSION from VERSION, not hardcode;
-#   2. full-repo marker sweep is exactly one value == @v$(cat VERSION);
+#   2. full-repo marker sweep is exactly one value == @v$(cat VERSION)
+#      (tests/fixtures/negative/ is excluded: it deliberately seeds drift
+#      for the G5.9 negative fixture and is governed by run_negative.sh);
 #   3. sweep is idempotent (2nd run is a byte-level no-op);
 #   4. a bump (VERSION -> 9, a 1-byte edit) is reconciled repo-wide by the
 #      sweep, then reverted to the original value and swept back.
@@ -19,9 +21,9 @@ fail() {
     exit 1
 }
 
-markers() { grep -rIho 'paladin-probe@v[0-9][0-9]*' --exclude-dir=.git "$REPO_DIR" | sort -u; }
+markers() { grep -rIho 'paladin-probe@v[0-9][0-9]*' --exclude-dir=.git --exclude-dir=negative "$REPO_DIR" | sort -u; }
 marker_count() { markers | wc -l; }
-fingerprint() { grep -rlI 'paladin-probe@v[0-9][0-9]*' --exclude-dir=.git "$REPO_DIR" | sort | xargs -r sha256sum | sha256sum | cut -d' ' -f1; }
+fingerprint() { grep -rlI 'paladin-probe@v[0-9][0-9]*' --exclude-dir=.git --exclude-dir=negative "$REPO_DIR" | sort | xargs -r sha256sum | sha256sum | cut -d' ' -f1; }
 
 cleanup() {
     if [ "$(tr -d '[:space:]' < "$VERSION_FILE")" != "$ORIGINAL_VERSION" ]; then
@@ -60,8 +62,9 @@ echo "bump: VERSION -> 9 (1-byte edit), reconcile all markers..."
 printf '9' > "$VERSION_FILE"
 [ "$(wc -c < "$VERSION_FILE")" -eq 1 ] || fail "VERSION is not a 1-byte edit"
 "$SYNC" >/dev/null || fail "bump sync exited non-zero"
+WANT="paladin-probe@v$(tr -d '[:space:]' < "$VERSION_FILE")"
 [ "$(marker_count)" -eq 1 ] || fail "after bump: expected exactly 1 marker value, got: $(markers | tr '\n' ' ')"
-[ "$(markers | head -1)" = "paladin-probe@v3" ] || fail "after bump: marker != paladin-probe@v3"
+[ "$(markers | head -1)" = "$WANT" ] || fail "after bump: marker != $WANT"
 FP3="$(fingerprint)"
 "$SYNC" >/dev/null || fail "second bump sync exited non-zero"
 FP4="$(fingerprint)"

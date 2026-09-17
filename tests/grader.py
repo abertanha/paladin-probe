@@ -1328,6 +1328,51 @@ class Grader:
             self.emit("G5.8", "PASS",
                       f"{n_docs} chain doc(s); all chain: refs resolve and links point at real findings")
 
+        # G5.9 — skill-version drift (grilling Q5-A): wherever the version
+        # marker already exists it MUST equal paladin-probe@v$(cat VERSION)
+        # from the repo root VERSION file — in config.yaml skill_version,
+        # chain frontmatter skill_version, and vex.json author. Findings must
+        # never carry skill_version (zero contract change), so findings are
+        # deliberately not inspected here.
+        version_file = Path(__file__).resolve().parents[1] / "VERSION"
+        if not version_file.is_file():
+            self.emit("G5.9", "FAIL", f"VERSION missing at {version_file} (single source of truth)")
+            return
+        expected = f"paladin-probe@v{read(version_file).strip()}"
+        drifts = []
+
+        config_text = read(self.rt / "config.yaml")
+        if config_text:
+            m = re.search(r"^\s*skill_version:\s*(.+?)\s*$", config_text, re.MULTILINE)
+            if m:
+                actual = m.group(1).strip().strip("\"'")
+                if actual != expected:
+                    drifts.append(f"config.yaml skill_version={actual!r}")
+
+        chains_dir = self.rt / "chains"
+        if chains_dir.is_dir():
+            for ch_file in sorted(chains_dir.glob("CH-*.md")):
+                ch_fm = parse_frontmatter(read(ch_file) or "") or {}
+                actual = ch_fm.get("skill_version")
+                if actual is not None and actual != expected:
+                    drifts.append(f"chains/{ch_file.name} skill_version={actual!r}")
+
+        vex_text = read(self.rt / "exports" / "vex.json")
+        if vex_text:
+            try:
+                actual = json.loads(vex_text).get("author")
+            except ValueError:
+                actual = None
+            if actual is not None and actual != expected:
+                drifts.append(f"vex.json author={actual!r}")
+
+        if drifts:
+            self.emit("G5.9", "FAIL",
+                      "skill-version drift: " + "; ".join(drifts) + f" (expected {expected})",
+                      expected=expected, actual=drifts)
+        else:
+            self.emit("G5.9", "PASS", f"version markers consistent ({expected})")
+
         self.emit("G5", "PASS", "Threat model & surface hygiene checks complete")
 
     # ── Main ────────────────────────────────────────────────────────────
