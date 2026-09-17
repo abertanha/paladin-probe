@@ -2,7 +2,7 @@
 
 **Probe Date:** 2026-07-29
 **Target:** https://app.example.com (staging)
-**Skill Version:** paladin-probe@v2
+**Skill Version:** paladin-probe@v3
 **Method:** Live probes + code analysis
 
 ## Summary

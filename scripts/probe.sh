@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# probe.sh — paladin-probe live-probe wrapper (v3)
+# probe.sh — paladin-probe live-probe wrapper (version from VERSION)
 #
 # Enforces the Live Probe Protocol mechanically so the agent doesn't have to:
 # consent gates, route skip-lists, throttling, 429 backoff, 5xx circuit
@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-PROBE_VERSION="v3"
+PROBE_VERSION="v$(cat "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION")"
 STATE_DIR_NAME=".probe-state"
 HISTORY_LOG="history.log"
 DEFAULT_IGNORE_HEADERS="Date|Set-Cookie|X-Request-Id|ETag|Server|Content-Length"

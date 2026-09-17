@@ -1,7 +1,7 @@
 {
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://example.com/sample/vex.json",
-  "author": "paladin-probe@v2",
+  "author": "paladin-probe@v3",
   "timestamp": "2025-01-01T00:00:00Z",
   "version": 1,
   "statements": [
