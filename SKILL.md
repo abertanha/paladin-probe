@@ -226,6 +226,8 @@ scripts/probe.sh diff --rt RT-003 --method GET \
   --url 'https://t/api/{{page}}' --var page=admin --var-base page=profile
 scripts/probe.sh capture --rt RT-003 --kind serverlog -- 'tail -n 200 /var/log/app/api.log'
 scripts/probe.sh verify                                 # recheck all manifests
+scripts/probe.sh checkpoint --write --phase probe:authz \
+  --summary "..." --next "..." --decided-open DP-001   # session handoff
 ```
 
 - **Choose what to probe** — the wrapper has no opinion.
@@ -841,6 +843,30 @@ session complete.
 
 All fix procedures are documented in `references/grader-fixes.md`. The agent MUST
 consult this file before modifying any artifact — do not guess the fix.
+
+## Session Handoff (Checkpoint / Resume)
+
+Long engagements outlive a single context window. At each phase boundary the
+agent writes a **checkpoint** — a mechanical snapshot plus a narrative handoff —
+so a fresh session can resume without re-reading the whole tree:
+
+```bash
+scripts/probe.sh checkpoint --write --phase recon \
+  --summary "what happened, what is still uncertain" \
+  --next "the next concrete step" --decided-open DP-001 --context-pct 40
+scripts/probe.sh checkpoint --read     # the current checkpoint, verbatim
+```
+
+`--phase` is one of `recon`, `model`, `probe:<category>`, `post-probe`. Each
+boundary gets its own file under `.red-team/sessions/<date>_checkpoint-<phase>.md`
+(rewriting a phase leaves the others intact). The frontmatter is generated from
+disk, not from memory — `findings_written`, `pending_high_static` (Open findings
+still only High-static) and `evidence_manifests` are read back from the tree, so
+they cannot drift. `session_id` is reused across boundaries; the `consent_snapshot`
+is copied from `config.yaml` once and frozen for the session.
+
+On resume, read the checkpoint first, confirm the abort/consent state with
+`scripts/probe.sh check`, then continue — never re-run a phase already marked done.
 
 ## OWASP Standards Alignment (Phase F)
 

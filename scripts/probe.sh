@@ -36,6 +36,25 @@ Usage:
   probe.sh capture --rt RT-003 --kind KIND -- <command...>
   probe.sh verify [--root PATH]
   probe.sh check  [--root PATH]
+  probe.sh checkpoint --write --phase X --summary "..." [--next "..."]... [--root PATH]
+  probe.sh checkpoint --read [--root PATH]
+
+checkpoint options (session handoff at a phase boundary — mechanical):
+  --write               Write/replace the checkpoint for this boundary
+  --read                Print the current (most recent) checkpoint, verbatim
+  --phase X             recon | model | probe:<category> | post-probe (required)
+  --summary "..."       Narrative handoff body, written by the agent (required)
+  --next "..."          One planned next step (repeatable)
+  --decided-open DP-NNN Open decision point (repeatable)
+  --context-pct N       Orchestrator context budget used, percent (default 0)
+  --session-id ID       Override the reused session id (default: reuse latest)
+                        Writes .red-team/sessions/<date>_checkpoint-<phase>.md
+                        (one per boundary; rewriting a phase leaves the others
+                        intact) with structured frontmatter: session_id, phase,
+                        effort, consent_snapshot (copied from config.yaml),
+                        context_budget_used_pct, findings_written,
+                        pending_high_static, decided_open, evidence_manifests,
+                        next_planned_steps.
 
 send options:
   --rt RT-NNN           Finding/evidence id (required, ^RT-[0-9]{3}$)
@@ -322,6 +341,8 @@ parse_opts() {
     OPT_JSON=false; HEADERS=(); OPT_IDEM=""; OPT_LABEL=""; OPT_DRYRUN=false
     OPT_JSONOUT=false; OPT_ROOT=""; VARS=(); BASE_VARS=(); IGN=(); OPT_RAW=false
     OPT_KIND=""; CMD=()
+    OPT_WRITE=false; OPT_READ=false; OPT_PHASE=""; OPT_SUMMARY=""
+    OPT_CTXPCT=""; OPT_SESSION_ID=""; NEXT_STEPS=(); DECIDED=()
     PENDING=""
     local args=("$@") arg i
     for (( i=0; i<${#args[@]}; i++ )); do
@@ -344,6 +365,14 @@ parse_opts() {
             --ignore-header) PENDING=ign; continue ;;
             --kind) PENDING=kind; continue ;;
             --root) PENDING=root; continue ;;
+            --phase) PENDING=phase; continue ;;
+            --summary) PENDING=summary; continue ;;
+            --next) PENDING=next; continue ;;
+            --decided-open) PENDING=decided; continue ;;
+            --context-pct) PENDING=ctxpct; continue ;;
+            --session-id) PENDING=session; continue ;;
+            --write) OPT_WRITE=true; continue ;;
+            --read) OPT_READ=true; continue ;;
             --json) OPT_JSON=true; continue ;;
             --dry-run) OPT_DRYRUN=true; continue ;;
             --json-out) OPT_JSONOUT=true; continue ;;
@@ -366,6 +395,12 @@ parse_opts() {
                 varbase) BASE_VARS+=("$arg") ;;
                 ign) IGN+=("$arg") ;;
                 kind) OPT_KIND="$arg" ;;
+                phase) OPT_PHASE="$arg" ;;
+                summary) OPT_SUMMARY="$arg" ;;
+                next) NEXT_STEPS+=("$arg") ;;
+                decided) DECIDED+=("$arg") ;;
+                ctxpct) OPT_CTXPCT="$arg" ;;
+                session) OPT_SESSION_ID="$arg" ;;
             esac
             PENDING=""
         else
@@ -838,6 +873,169 @@ cmd_capture() {
     rm -f "$raw"
 }
 
+# ---------------------------------------------------------------- cmd: checkpoint
+
+gen_uuid() {
+    if [[ -r /proc/sys/kernel/random/uuid ]]; then
+        cat /proc/sys/kernel/random/uuid
+    else
+        python3 -c 'import uuid; print(uuid.uuid4())'
+    fi
+}
+
+yaml_quote() { # emit a double-quoted YAML scalar, escaping \ and "
+    local s="$1"
+    s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+    printf '"%s"' "$s"
+}
+
+yaml_id_list() { # stdin: one id per line -> [a, b, c] (or [])
+    awk 'BEGIN{ f=0; printf "[" } NF { if (f) printf ", "; printf "%s", $0; f=1 } END{ printf "]" }'
+}
+
+fm_field() { # fm_field <file> <key> — first top-level scalar in frontmatter
+    awk -v k="$2" '
+        $0 == "---" { n++; next }
+        n == 1 {
+            if ($0 ~ "^" k ":[[:space:]]*") { v=$0; sub("^" k ":[[:space:]]*", "", v); print v; exit }
+        }' "$1" 2>/dev/null || true
+}
+
+collect_findings_written() {
+    local f
+    for f in "$ROOT"/.red-team/findings/*.md; do
+        [[ -f "$f" ]] || continue
+        [[ "$(basename "$f")" == "index.md" ]] && continue
+        fm_field "$f" id
+    done | sort -u
+}
+
+collect_pending_high_static() {
+    local f st cf id
+    for f in "$ROOT"/.red-team/findings/*.md; do
+        [[ -f "$f" ]] || continue
+        [[ "$(basename "$f")" == "index.md" ]] && continue
+        st="$(fm_field "$f" status)"
+        cf="$(fm_field "$f" confidence)"
+        [[ "$st" == "Open" && "$cf" == "High-static" ]] || continue
+        id="$(fm_field "$f" id)"
+        [[ -n "$id" ]] && echo "$id"
+    done | sort -u
+}
+
+count_evidence_manifests() {
+    local n=0 f
+    for f in "$ROOT"/.red-team/evidence/*/manifest.sha256; do
+        [[ -f "$f" ]] && n=$((n + 1))
+    done
+    printf '%s' "$n"
+}
+
+extract_consent() { # prints the consent: block body (indented), or nothing
+    awk '
+        /^consent:[[:space:]]*$/ { inb=1; next }
+        inb && /^[^[:space:]]/ { exit }
+        inb { print }
+    ' "$ROOT/.red-team/config.yaml" 2>/dev/null || true
+}
+
+extract_ckpt_block() { # extract_ckpt_block <checkpoint> <key> — nested block body
+    awk -v k="$2" '
+        $0 == "---" { n++; next }
+        n == 1 {
+            if ($0 ~ "^" k ":[[:space:]]*$") { inb=1; next }
+            if (inb && $0 ~ /^[^[:space:]]/) exit
+            if (inb) print
+        }' "$1" 2>/dev/null || true
+}
+
+cmd_checkpoint() {
+    resolve_root
+    local sessions_dir="$ROOT/.red-team/sessions"
+
+    if $OPT_READ; then
+        local f
+        f="$(ls -1t "$sessions_dir"/*_checkpoint*.md 2>/dev/null | head -1 || true)"
+        [[ -n "$f" && -f "$f" ]] || { echo "probe.sh: no checkpoint under $sessions_dir" >&2; exit 8; }
+        cat "$f"
+        exit 0
+    fi
+
+    $OPT_WRITE || die "checkpoint requires --write or --read"
+    local phase="$OPT_PHASE"
+    [[ -n "$phase" ]] || die "checkpoint --write requires --phase"
+    [[ -n "$OPT_SUMMARY" ]] || die "checkpoint --write requires --summary"
+
+    # session_id: reuse the latest checkpoint's id unless overridden
+    local session_id="$OPT_SESSION_ID" prev
+    prev="$(ls -1t "$sessions_dir"/*_checkpoint*.md 2>/dev/null | head -1 || true)"
+    [[ -n "$prev" && -f "$prev" ]] || prev=""
+    if [[ -z "$session_id" && -n "$prev" ]]; then
+        session_id="$(fm_field "$prev" session_id)"
+    fi
+    [[ -n "$session_id" ]] || session_id="$(gen_uuid)"
+
+    local effort ctxpct date phase_slug file consent_block=""
+    effort="$(cfg_val effort standard)"
+    ctxpct="${OPT_CTXPCT:-0}"
+    date="$(date -u +%F)"
+    phase_slug="$(printf '%s' "$phase" | tr -c 'A-Za-z0-9._-' '-')"
+    file="$sessions_dir/${date}_checkpoint-${phase_slug}.md"
+
+    # consent snapshot: copied from config.yaml once, then frozen for the
+    # session (an existing checkpoint of the same session_id wins).
+    if [[ -n "$prev" && "$(fm_field "$prev" session_id)" == "$session_id" ]]; then
+        consent_block="$(extract_ckpt_block "$prev" consent_snapshot)"
+    fi
+    [[ -n "$consent_block" ]] || consent_block="$(extract_consent)"
+
+    # mechanical counts, straight from disk
+    local findings_written pending_static manifests decided_list
+    findings_written="$(collect_findings_written)"
+    pending_static="$(collect_pending_high_static)"
+    manifests="$(count_evidence_manifests)"
+    decided_list="$(printf '%s\n' "${DECIDED[@]:-}" | sed '/^[[:space:]]*$/d' | sort -u | yaml_id_list)"
+
+    # next steps as a quoted inline list
+    local ns=() s next_block
+    for s in "${NEXT_STEPS[@]:-}"; do [[ -n "$s" ]] && ns+=("$(yaml_quote "$s")"); done
+    if [[ ${#ns[@]} -gt 0 ]]; then next_block="[$(IFS=', '; echo "${ns[*]}")]"; else next_block="[]"; fi
+
+    mkdir -p "$sessions_dir"
+    {
+        echo "---"
+        echo "session_id: $session_id"
+        echo "phase: $phase"
+        echo "effort: $effort"
+        if [[ -n "$consent_block" ]]; then
+            echo "consent_snapshot:"
+            printf '%s\n' "$consent_block"
+        else
+            echo "consent_snapshot: {}"
+        fi
+        echo "context_budget_used_pct: $ctxpct"
+        echo "findings_written: $(printf '%s\n' "$findings_written" | yaml_id_list)"
+        echo "pending_high_static: $(printf '%s\n' "$pending_static" | yaml_id_list)"
+        echo "decided_open: $decided_list"
+        echo "evidence_manifests: $manifests"
+        echo "next_planned_steps: $next_block"
+        echo "---"
+        echo ""
+        echo "## Summary"
+        echo ""
+        printf '%s\n' "$OPT_SUMMARY"
+        if [[ ${#ns[@]} -gt 0 ]]; then
+            echo ""
+            echo "## Next planned steps"
+            echo ""
+            for s in "${NEXT_STEPS[@]:-}"; do [[ -n "$s" ]] && echo "- $s"; done
+        fi
+    } > "$file" || { echo "probe.sh: cannot write $file" >&2; exit 9; }
+
+    echo "checkpoint=$file session_id=$session_id phase=$phase findings_written=$(printf '%s\n' "$findings_written" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') pending_high_static=$(printf '%s\n' "$pending_static" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') evidence_manifests=$manifests"
+    exit 0
+}
+
 # ---------------------------------------------------------------- main
 
 [[ $# -eq 0 ]] && { usage; exit 8; }
@@ -848,6 +1046,7 @@ case "$SUB" in
     capture) cmd_capture ;;
     verify) cmd_verify ;;
     check) cmd_check ;;
+    checkpoint) cmd_checkpoint ;;
     -h|--help|help) usage; exit 0 ;;
-    *) die "unknown subcommand: $SUB (send | diff | capture | verify | check)" ;;
+    *) die "unknown subcommand: $SUB (send | diff | capture | verify | check | checkpoint)" ;;
 esac
