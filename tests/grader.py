@@ -52,83 +52,310 @@ REGEX_MAP = {
 
 STANDARDS_PRIORITY = ["CWE", "OWASP-Top-2025", "OWASP-WSTG", "OWASP-ASVS", "OWASP-API-2023"]
 
-# ── YAML frontmatter parser (stdlib only) ───────────────────────────────
+# ── YAML frontmatter parser (stdlib only, recursive by indentation) ──────
+#
+# Supports the frontmatter vocabulary of findings/ and chains/ docs:
+# block mappings, block sequences (indented or at parent-key indent),
+# lists of mappings (`- key: val` + aligned continuation keys), nested
+# mappings (`evidence:`, `target_version:`), inline lists (`[a, b]`),
+# block scalars (`|`, `>` with +/- chomping), quoted strings with escapes,
+# and typed scalars (str/int/float/bool/null). Deliberately NOT supported:
+# flow mappings, anchors/aliases, multi-document, tabs. Lenient by design —
+# malformed lines are skipped, never fatal (structure is judged by checks,
+# not by the parser).
+
+_KEY_RE = re.compile(r"^([\w\-.]+):\s*(.*)$")
+_INT_RE = re.compile(r"^-?\d+$")
+_FLOAT_RE = re.compile(r"^-?(?:\d+\.\d+|\d+\.?\d*[eE][-+]?\d+)$")
+_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "0": "\0"}
 
 def parse_frontmatter(text):
     """Extract YAML frontmatter between --- markers. Returns dict or None."""
     m = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
     if not m:
         return None
-    raw = m.group(1)
-    return _parse_yaml_kv(raw)
+    value = _parse_yaml(m.group(1))
+    return value if isinstance(value, dict) else {}
 
-def _parse_yaml_kv(text):
-    """Minimal YAML key:value parser for flat and moderately nested frontmatter."""
-    result = {}
+def _parse_yaml(text):
+    """Parse a frontmatter block. Top level must be a mapping; a block that
+    parses to anything else (or nothing) degrades to {} — lenient."""
     lines = text.split("\n")
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-        # Skip blank lines
-        if not stripped:
-            i += 1
-            continue
-        # List item (- key: value) — handled by parent context
-        if stripped.startswith("- "):
-            i += 1
-            continue
-        # Key: value at current indent
-        m = re.match(r"^(\S[\w_]*):\s*(.*)", line)
-        if not m:
-            i += 1
-            continue
-        key = m.group(1).strip()
-        val_raw = m.group(2).strip()
-        # Multiline scalar (|)
-        if val_raw == "|":
-            val_lines = []
-            i += 1
-            while i < len(lines) and (lines[i].startswith("  ") or lines[i].strip() == ""):
-                if lines[i].strip():
-                    val_lines.append(lines[i].strip())
-                i += 1
-            result[key] = "\n".join(val_lines)
-            continue
-        # Inline list [a, b, c]
-        if val_raw.startswith("[") and val_raw.endswith("]"):
-            inner = val_raw[1:-1]
-            result[key] = [x.strip().strip('"').strip("'") for x in inner.split(",") if x.strip()]
-            i += 1
-            continue
-        # Boolean
-        if val_raw.lower() in ("true", "false"):
-            result[key] = val_raw.lower() == "true"
-            i += 1
-            continue
-        # None/null
-        if val_raw.lower() in ("null", "~", "none"):
-            result[key] = None
-            i += 1
-            continue
-        # Number
-        try:
-            if "." in val_raw:
-                result[key] = float(val_raw)
-            else:
-                result[key] = int(val_raw)
-            i += 1
-            continue
-        except ValueError:
-            pass
-        # Plain string (possibly quoted)
-        result[key] = val_raw.strip('"').strip("'")
-        i += 1
-    return result
+    value, _ = _parse_block(lines, 0, 0)
+    return value if isinstance(value, dict) else {}
 
-def _parse_nested_key(line, result):
-    """Parse '  subkey: value' into the parent dict. Not used — flat parse sufficient."""
-    pass
+def _indent_of(line):
+    return len(line) - len(line.lstrip(" "))
+
+def _skip_blank(lines, i):
+    """Index of the next non-blank, non-comment line (or len(lines))."""
+    n = len(lines)
+    while i < n:
+        s = lines[i].strip()
+        if s and not s.startswith("#"):
+            return i
+        i += 1
+    return n
+
+def _parse_block(lines, i, min_indent):
+    """Parse the node starting at the next significant line, which must be
+    indented at least min_indent. Returns (value, next_index)."""
+    i = _skip_blank(lines, i)
+    if i >= len(lines):
+        return None, i
+    indent = _indent_of(lines[i])
+    if indent < min_indent:
+        return None, i
+    s = lines[i].strip()
+    if s == "-" or s.startswith("- "):
+        return _parse_sequence(lines, i, indent)
+    return _parse_mapping(lines, i, indent)
+
+def _parse_mapping(lines, i, indent):
+    """Parse a block mapping whose keys sit at `indent`."""
+    result = {}
+    n = len(lines)
+    while True:
+        i = _skip_blank(lines, i)
+        if i >= n:
+            break
+        line = lines[i]
+        ind = _indent_of(line)
+        if ind < indent:
+            break
+        s = line.strip()
+        if ind == indent:
+            if s == "-" or s.startswith("- "):
+                break  # sequence at mapping indent belongs to the parent key
+            m = _KEY_RE.match(s)
+            if not m:
+                i += 1  # malformed line — skip, never fatal
+                continue
+            key, rest = m.group(1), m.group(2)
+            i += 1
+            result[key], i = _parse_value(lines, i, rest, indent)
+        else:
+            i += 1  # stray deeper line not consumed by any value — skip
+    return result, i
+
+def _parse_sequence(lines, i, indent):
+    """Parse a block sequence whose `-` items sit at `indent`."""
+    items = []
+    n = len(lines)
+    while True:
+        i = _skip_blank(lines, i)
+        if i >= n:
+            break
+        line = lines[i]
+        ind = _indent_of(line)
+        s = line.strip()
+        if ind != indent or not (s == "-" or s.startswith("- ")):
+            break  # end of this sequence level
+        content = s[1:].strip()
+        if content == "":
+            # bare '-': the item is the nested block that follows
+            item, i = _parse_block(lines, i + 1, indent + 1)
+            items.append(item)
+            continue
+        m = _KEY_RE.match(content)
+        if m and content[0] not in "\"'":
+            # '- key: value' — mapping item; further keys align with `key`
+            after_dash = line[ind + 1:]
+            item_indent = ind + 1 + (len(after_dash) - len(after_dash.lstrip(" ")))
+            key, rest = m.group(1), m.group(2)
+            item, i = _parse_mapping_from_first(lines, i + 1, item_indent, key, rest)
+            items.append(item)
+        else:
+            items.append(_parse_inline_scalar(content))
+            i += 1
+    return items, i
+
+def _parse_mapping_from_first(lines, i, indent, first_key, first_rest):
+    """Parse a mapping whose first pair was on a list-item line; subsequent
+    keys align at `indent`."""
+    item = {}
+    item[first_key], i = _parse_value(lines, i, first_rest, indent)
+    n = len(lines)
+    while True:
+        i = _skip_blank(lines, i)
+        if i >= n:
+            break
+        ind = _indent_of(lines[i])
+        if ind < indent:
+            break
+        s = lines[i].strip()
+        if ind == indent:
+            m = _KEY_RE.match(s)
+            if not m:
+                break
+            key, rest = m.group(1), m.group(2)
+            i += 1
+            item[key], i = _parse_value(lines, i, rest, indent)
+        else:
+            i += 1  # stray deeper line — skip
+    return item, i
+
+def _parse_value(lines, i, rest, key_indent):
+    """Value of a mapping key: `rest` is what followed `key:` on its line."""
+    s = rest.strip()
+    if s == "":
+        # Nested block (deeper indent), same-indent sequence, or null
+        j = _skip_blank(lines, i)
+        if j >= len(lines):
+            return None, j
+        ind = _indent_of(lines[j])
+        s2 = lines[j].strip()
+        if ind > key_indent:
+            return _parse_block(lines, j, key_indent + 1)
+        if ind == key_indent and (s2 == "-" or s2.startswith("- ")):
+            return _parse_sequence(lines, j, ind)
+        return None, j
+    if s[0] in "\"'":
+        return _parse_quoted(s), i
+    s = re.split(r"\s#", s, 1)[0].strip()  # strip trailing comment
+    if s == "":
+        return None, i
+    if s[0] in "|>":
+        return _parse_block_scalar(lines, i, s, key_indent)
+    if s.startswith("["):
+        return _parse_inline_list(s), i
+    return _parse_scalar(s), i
+
+def _parse_block_scalar(lines, i, header, key_indent):
+    """Block scalar `|`/`>` with optional +/- chomping. Body lines are the
+    following lines indented deeper than the key."""
+    literal = header[0] == "|"
+    chomp = header[1:]
+    body = []
+    j = i
+    n = len(lines)
+    while j < n:
+        line = lines[j]
+        if line.strip() == "":
+            body.append("")
+            j += 1
+            continue
+        if _indent_of(line) <= key_indent:
+            break
+        body.append(line)
+        j += 1
+    while body and body[-1] == "":
+        body.pop()
+    indents = [_indent_of(b) for b in body if b != ""]
+    common = min(indents) if indents else 0
+    content = [b[common:] if b != "" else "" for b in body]
+    if literal:
+        val = "\n".join(content)
+    else:  # folded: single newline → space, blank line → newline
+        parts = []
+        for k, b in enumerate(content):
+            if b == "":
+                parts.append("\n")
+            elif k == 0 or content[k - 1] == "":
+                parts.append(b)
+            else:
+                parts.append(" " + b)
+        val = "".join(parts)
+    if chomp != "-" and val != "":
+        val += "\n"
+    return val, j
+
+def _parse_quoted(s):
+    """Quoted scalar starting at s[0]; content after the closing quote
+    (trailing comments) is ignored. Double quotes honor \\-escapes."""
+    if s[0] == '"':
+        out = []
+        k = 1
+        n = len(s)
+        while k < n:
+            c = s[k]
+            if c == "\\" and k + 1 < n:
+                nxt = s[k + 1]
+                if nxt in ("u", "U"):  # \uXXXX / \UXXXXXXXX unicode escape
+                    hex_len = 4 if nxt == "u" else 8
+                    digits = s[k + 2:k + 2 + hex_len]
+                    if len(digits) == hex_len:
+                        try:
+                            out.append(chr(int(digits, 16)))
+                            k += 2 + hex_len
+                            continue
+                        except ValueError:
+                            pass
+                    out.append("\\" + nxt)
+                    k += 2
+                    continue
+                out.append(_ESCAPES.get(nxt, "\\" + nxt))
+                k += 2
+                continue
+            if c == '"':
+                break
+            out.append(c)
+            k += 1
+        return "".join(out)
+    out = []  # single-quoted: '' is an escaped quote
+    k = 1
+    n = len(s)
+    while k < n:
+        if s[k] == "'" and k + 1 < n and s[k + 1] == "'":
+            out.append("'")
+            k += 2
+            continue
+        if s[k] == "'":
+            break
+        out.append(s[k])
+        k += 1
+    return "".join(out)
+
+def _parse_inline_list(s):
+    """Inline list `[a, b, ...]`; items are typed scalars, quotes aware."""
+    inner = s[1:-1] if s.endswith("]") else s[1:]
+    if inner.strip() == "":
+        return []
+    parts, cur, quote = [], [], None
+    for c in inner:
+        if quote:
+            cur.append(c)
+            if c == quote:
+                quote = None
+            continue
+        if c in "\"'":
+            quote = c
+            cur.append(c)
+            continue
+        if c == ",":
+            parts.append("".join(cur))
+            cur = []
+            continue
+        cur.append(c)
+    parts.append("".join(cur))
+    return [_parse_inline_scalar(p) for p in parts if p.strip() != ""]
+
+def _parse_inline_scalar(s):
+    """One scalar already stripped of its surrounding syntax: quoted string
+    or comment-stripped typed scalar."""
+    s = s.strip()
+    if s == "":
+        return None
+    if s[0] in "\"'":
+        return _parse_quoted(s)
+    s = re.split(r"\s#", s, 1)[0].strip()
+    if s == "":
+        return None
+    return _parse_scalar(s)
+
+def _parse_scalar(s):
+    """Typed scalar: bool/int/float/null/str (comment-stripped input)."""
+    if s in ("~", "null", "Null", "NULL", "none", "None"):
+        return None
+    if s in ("true", "True", "TRUE"):
+        return True
+    if s in ("false", "False", "FALSE"):
+        return False
+    if _INT_RE.match(s):
+        return int(s)
+    if _FLOAT_RE.match(s):
+        return float(s)
+    return s
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
