@@ -388,6 +388,104 @@ def glob_files(path):
         return []
     return sorted(path.iterdir())
 
+# ── State query (read-only, derive-on-read) ───────────────────────────────
+
+_DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+_PROBE_DATE_RE = re.compile(
+    r"(?:\*\*)?(?:Probe date|probe_date|Date):(?:\*\*)?\s*(\d{4}-\d{2}-\d{2})")
+
+
+def compute_state(target):
+    """Condensed, read-only snapshot of a .red-team/ tree, derived entirely
+    from disk at read time (no persisted state.json — a single source of
+    truth cannot drift). Ordering is stable (ids/paths sorted). stdlib only.
+
+    Counts mirror the grader's REPORT summary semantics: `open` = status Open
+    with High-verified confidence, `static_only` = Open with High-static;
+    `fixed` folds Fixed/Remediated; `fp`/`duplicate` are their own buckets.
+    """
+    root = Path(target)
+    rt = root / ".red-team"
+
+    findings = {}
+    fdir = rt / "findings"
+    if fdir.is_dir():
+        for fpath in sorted(fdir.glob("*.md")):
+            if fpath.name == "index.md":
+                continue
+            fm = parse_frontmatter(read(fpath) or "")
+            if fm and fm.get("id"):
+                findings[fm["id"]] = fm
+
+    counts = {"open": 0, "static_only": 0, "fixed": 0, "fp": 0, "duplicate": 0}
+    by_severity = {}
+    flist = []
+    for fid in sorted(findings):
+        fm = findings[fid]
+        status = fm.get("status", "")
+        conf = fm.get("confidence", "")
+        sev = fm.get("severity", "")
+        if status == "Open" and conf == "High-verified":
+            counts["open"] += 1
+        elif status == "Open" and conf == "High-static":
+            counts["static_only"] += 1
+        if status in ("Fixed", "Remediated"):
+            counts["fixed"] += 1
+        elif status == "False Positive":
+            counts["fp"] += 1
+        elif status == "Duplicate":
+            counts["duplicate"] += 1
+        if sev:
+            by_severity[sev] = by_severity.get(sev, 0) + 1
+        flist.append({
+            "id": fid,
+            "status": status,
+            "confidence": conf,
+            "category": fm.get("category", ""),
+        })
+
+    chains = []
+    cdir = rt / "chains"
+    if cdir.is_dir():
+        chains = [p.stem for p in sorted(cdir.glob("CH-*.md"))]
+
+    edir = rt / "evidence"
+    evidence_manifests = len(sorted(edir.glob("*/manifest.sha256"))) if edir.is_dir() else 0
+
+    sdir = rt / ".probe-state"
+    aborted_hosts = [p.stem for p in sorted(sdir.glob("*.aborted"))] if sdir.is_dir() else []
+
+    dates = []
+    for name in ("REPORT.md", "surface.md", "threat-model.md"):
+        text = read(rt / name)
+        if text:
+            m = _PROBE_DATE_RE.search(text)
+            if m:
+                dates.append(m.group(1))
+    if fdir.is_dir():
+        for p in sorted(fdir.glob("*.md")):
+            m = _DATE_PREFIX_RE.match(p.name)
+            if m:
+                dates.append(m.group(1))
+    if edir.is_dir():
+        for p in sorted(edir.glob("*/*")):
+            m = _DATE_PREFIX_RE.match(p.name)
+            if m:
+                dates.append(m.group(1))
+
+    return {
+        "schema_version": 1,
+        "target": str(rt),
+        "counts": counts,
+        "by_severity": {k: by_severity[k] for k in sorted(by_severity)},
+        "findings": flist,
+        "chains": chains,
+        "evidence_manifests": evidence_manifests,
+        "aborted_hosts": aborted_hosts,
+        "last_probe_date": max(dates) if dates else None,
+        "derived_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
 # ── Grader ───────────────────────────────────────────────────────────────
 
 class Grader:
@@ -1410,6 +1508,39 @@ class Grader:
 
 def main():
     import argparse
+    argv = sys.argv[1:]
+
+    if argv and argv[0] == "state":
+        parser = argparse.ArgumentParser(
+            prog="grader.py state",
+            description="Read-only, derive-on-read condensed state of a .red-team/ tree")
+        parser.add_argument("target", help="Project root directory containing .red-team/")
+        parser.add_argument("--json", action="store_true",
+                            help="Emit the state as JSON (stable ordering)")
+        args = parser.parse_args(argv[1:])
+        if not (Path(args.target) / ".red-team").is_dir():
+            print(f"state: no .red-team/ directory under {args.target}", file=sys.stderr)
+            sys.exit(1)
+        state = compute_state(args.target)
+        if args.json:
+            print(json.dumps(state, indent=2))
+        else:
+            c = state["counts"]
+            print(f"target={state['target']}")
+            print(f"counts: open={c['open']} static_only={c['static_only']} "
+                  f"fixed={c['fixed']} fp={c['fp']} duplicate={c['duplicate']}")
+            sev = " ".join(f"{k}={v}" for k, v in state["by_severity"].items()) or "<none>"
+            print(f"by_severity: {sev}")
+            print(f"findings: {len(state['findings'])}")
+            for f in state["findings"]:
+                print(f"  {f['id']} {f['status']}/{f['confidence']} [{f['category']}]")
+            print(f"chains: {', '.join(state['chains']) or '<none>'}")
+            print(f"evidence_manifests={state['evidence_manifests']}")
+            print(f"aborted_hosts: {', '.join(state['aborted_hosts']) or '<none>'}")
+            print(f"last_probe_date={state['last_probe_date'] or '<none>'}")
+            print(f"derived_at={state['derived_at']}")
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(description="Paladin-probe grader")
     parser.add_argument("target", help="Project root directory containing .red-team/")
     parser.add_argument("--json", action="store_true", help="Output JSON report")

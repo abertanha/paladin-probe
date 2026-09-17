@@ -167,7 +167,14 @@ Higher effort buys depth, not speed: it scales how many hypotheses you generate
 per endpoint and how far chains are pursued — the two levers that actually
 exercise multi-step reasoning. `standard` is the default; do not select
 `exhaustive` without consent for the extra request volume it implies.
-`probe.sh check` prints the resolved level.
+`probe.sh check` prints the resolved level — it is the **official config-get** for
+the whole consent / route / effort surface: query it, never read `config.yaml`
+by hand.
+
+For a read-only snapshot of an in-progress engagement, use
+`python3 tests/grader.py state <root> [--json]` — counts by status/severity,
+findings, chains, evidence manifests, aborted hosts and last probe date, all
+derived from disk at read time (no persisted state file to drift).
 
 ## Live Probe Protocol (Wrapper-Driven)
 
