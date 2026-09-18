@@ -175,6 +175,33 @@ cfg_bool() { # cfg_bool <key> — true only if value is true/yes/1
     case "${v,,}" in true|yes|1) return 0 ;; *) return 1 ;; esac
 }
 
+# consent_globals <kind> — read one consent triplet from config.yaml into the
+# fields $consent_p1/$consent_p2 (shared by `check` and `capture`):
+#   serverlog:   p1=log_access.method,   p2=log_access.target
+#   dbstate:     p1=db_read_access.kind, p2=db_read_access.dsn_env
+#   test-oracle: p1=test_suite_oracle.command
+# Returns 0 when fully consented (all required fields present), 1 otherwise.
+# Never outputs — each caller builds its own verbosity.
+consent_globals() {
+    consent_p1= consent_p2=
+    case "$1" in
+        serverlog)
+            consent_p1="$(cfg_get log_access.method)"
+            consent_p2="$(cfg_get log_access.target)"
+            [[ -n "$consent_p1" && -n "$consent_p2" ]]
+            ;;
+        dbstate)
+            consent_p1="$(cfg_get db_read_access.kind)"
+            consent_p2="$(cfg_get db_read_access.dsn_env)"
+            [[ -n "$consent_p1" && -n "$consent_p2" ]]
+            ;;
+        test-oracle)
+            consent_p1="$(cfg_get test_suite_oracle.command)"
+            [[ -n "$consent_p1" ]]
+            ;;
+    esac
+}
+
 skip_routes() { # echoes one pattern per line
     awk '
         /^[[:space:]]*(#|$)/ { next }
@@ -451,21 +478,17 @@ cmd_check() {
     echo "throttle_seconds=$(cfg_val throttle_seconds 1)"
     echo "skip_routes=${routes:-<none>}"
     echo "aborted_hosts=${aborted:- <none>}"
-    local logm logt dbk dbe tsc
-    logm="$(cfg_get log_access.method)"; logt="$(cfg_get log_access.target)"
-    dbk="$(cfg_get db_read_access.kind)"; dbe="$(cfg_get db_read_access.dsn_env)"
-    tsc="$(cfg_get test_suite_oracle.command)"
-    if [[ -n "$logm" && -n "$logt" ]]; then
-        echo "log_access=granted (method=$logm, target=$logt)"
+    if consent_globals serverlog; then
+        echo "log_access=granted (method=$consent_p1, target=$consent_p2)"
     else
         echo "log_access=denied"
     fi
-    if [[ -n "$dbk" && -n "$dbe" ]]; then
-        echo "db_read_access=granted (kind=$dbk, dsn_env=\$${dbe})"
+    if consent_globals dbstate; then
+        echo "db_read_access=granted (kind=$consent_p1, dsn_env=\$${consent_p2})"
     else
         echo "db_read_access=denied"
     fi
-    if [[ -n "$tsc" ]]; then
+    if consent_globals test-oracle; then
         echo "test_suite_oracle=granted"
     else
         echo "test_suite_oracle=denied"
@@ -802,34 +825,28 @@ cmd_capture() {
 
     case "$kind" in
         serverlog)
-            local m t
-            m="$(cfg_get log_access.method)"; t="$(cfg_get log_access.target)"
-            if [[ -z "$m" || -z "$t" ]]; then
+            consent_globals serverlog || {
                 echo "probe.sh: log_access (method+target) not consented — refusing capture" >&2
                 exit 2
-            fi
-            consent_ref="log_access (method=$m, target=$t)"
-            [[ "$cmd_str" == *"$t"* ]] || die "capture command does not reference consented log_access.target '$t'"
+            }
+            consent_ref="log_access (method=$consent_p1, target=$consent_p2)"
+            [[ "$cmd_str" == *"$consent_p2"* ]] || die "capture command does not reference consented log_access.target '$consent_p2'"
             ;;
         dbstate)
-            local k e
-            k="$(cfg_get db_read_access.kind)"; e="$(cfg_get db_read_access.dsn_env)"
-            if [[ -z "$k" || -z "$e" ]]; then
+            consent_globals dbstate || {
                 echo "probe.sh: db_read_access (kind+dsn_env) not consented — refusing capture" >&2
                 exit 2
-            fi
-            consent_ref="db_read_access (kind=$k, dsn_env=\$${e} — value never read by the wrapper)"
-            [[ "$cmd_str" == *"$e"* ]] || die "capture command does not reference consented db_read_access.dsn_env '$e'"
+            }
+            consent_ref="db_read_access (kind=$consent_p1, dsn_env=\$${consent_p2} — value never read by the wrapper)"
+            [[ "$cmd_str" == *"$consent_p2"* ]] || die "capture command does not reference consented db_read_access.dsn_env '$consent_p2'"
             ;;
         test-oracle)
-            local c
-            c="$(cfg_get test_suite_oracle.command)"
-            if [[ -z "$c" ]]; then
+            consent_globals test-oracle || {
                 echo "probe.sh: test_suite_oracle.command not consented — refusing capture" >&2
                 exit 2
-            fi
+            }
             consent_ref="test_suite_oracle.command"
-            [[ "$cmd_str" == "$c" ]] || die "capture command must exactly match consented test_suite_oracle.command"
+            [[ "$cmd_str" == "$consent_p1" ]] || die "capture command must exactly match consented test_suite_oracle.command"
             ;;
     esac
 
