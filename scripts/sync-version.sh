@@ -17,6 +17,9 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION_FILE="$REPO_DIR/VERSION"
+LIB="$REPO_DIR/scripts/lib/sweep.sh"
+# shellcheck source=lib/sweep.sh
+source "$LIB"
 
 [ -f "$VERSION_FILE" ] || {
     echo "sync-version: VERSION missing at $VERSION_FILE (single source of truth)" >&2
@@ -42,19 +45,17 @@ updated=0
 ok=0
 while IFS= read -r -d '' f; do
     [ "$f" = "$VERSION_FILE" ] && { ok=$((ok + 1)); continue; }
-    current="$(grep -o 'paladin-probe@v[0-9][0-9]*' "$f" 2>/dev/null | sort -u || true)"
+    current="$(grep -o "$SWEEP_MARKER_RE" "$f" 2>/dev/null | sort -u || true)"
     [ -z "$current" ] && continue
     if [ "$current" = "$NEW_TOKEN" ]; then
         ok=$((ok + 1))
         continue
     fi
-    sed -i -E "s/paladin-probe@v[0-9]+/$NEW_TOKEN/g" "$f"
+    sed -i -E "s/$SWEEP_MARKER_RE/$NEW_TOKEN/g" "$f"
     updated=$((updated + 1))
-done < <(find "$REPO_DIR" -path "$REPO_DIR/.git" -prune -o \
-         -path "$REPO_DIR/tests/fixtures/negative" -prune -o -type f -print0)
+done < <(sweep_files "$REPO_DIR")
 
-remaining="$(grep -rIho 'paladin-probe@v[0-9][0-9]*' --exclude-dir=.git \
-             --exclude-dir=negative "$REPO_DIR" | sort -u || true)"
+remaining="$(marker_values "$REPO_DIR" || true)"
 if [ -z "$remaining" ]; then
     echo "sync-version: no paladin-probe@vN markers found in repo" >&2
     exit 1

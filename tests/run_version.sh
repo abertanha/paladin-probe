@@ -15,15 +15,17 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SYNC="$REPO_DIR/scripts/sync-version.sh"
 VERSION_FILE="$REPO_DIR/VERSION"
 ORIGINAL_VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+# shellcheck source=scripts/lib/sweep.sh
+source "$REPO_DIR/scripts/lib/sweep.sh"
 
 fail() {
     echo "FAIL: $1" >&2
     exit 1
 }
 
-markers() { grep -rIho 'paladin-probe@v[0-9][0-9]*' --exclude-dir=.git --exclude-dir=negative "$REPO_DIR" | sort -u; }
+markers() { marker_values "$REPO_DIR"; }
 marker_count() { markers | wc -l; }
-fingerprint() { grep -rlI 'paladin-probe@v[0-9][0-9]*' --exclude-dir=.git --exclude-dir=negative "$REPO_DIR" | sort | xargs -r sha256sum | sha256sum | cut -d' ' -f1; }
+fingerprint() { marker_files "$REPO_DIR" | xargs -r sha256sum | sha256sum | cut -d' ' -f1; }
 
 cleanup() {
     if [ "$(tr -d '[:space:]' < "$VERSION_FILE")" != "$ORIGINAL_VERSION" ]; then
