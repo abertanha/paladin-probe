@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from grader import CANONICAL_STANDARDS, parse_frontmatter  # noqa: E402
 
 FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
-SKIP = {"neg-g1.6"}
+SKIP = {"neg-g1.6", "neg-g1.6b"}
 
 
 def _emit_standards(rows):
@@ -64,7 +64,7 @@ def _rewrite_md(path, rows, write):
     return False
 
 
-def _rewrite_sarif(path, id_by_cwe_id, write):
+def _rewrite_sarif(path, write):
     raw = open(path).read()
     data = json.loads(raw)
     runs = data.get("runs") or []
@@ -169,7 +169,7 @@ def _iter_finding_paths(root):
 
 
 def _iter_md_findings(root):
-    """Yield (path, cwe) for every finding md with a parseable cwe."""
+    """Yield (path, cwe, fid) for every finding md with a parseable cwe."""
     for path in _iter_finding_paths(root):
         fm = parse_frontmatter(open(path).read())
         if fm and fm.get("cwe"):
@@ -203,7 +203,7 @@ def main():
                 print(f"  {mode.upper()}  {rel}")
         sarif = os.path.join(root, ".red-team", "exports", "findings.sarif")
         if os.path.isfile(sarif):
-            n = _rewrite_sarif(sarif, id_by_cwe_id, args.write)
+            n = _rewrite_sarif(sarif, args.write)
             if n:
                 files_changed += 1
                 rows_changed += n
