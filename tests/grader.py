@@ -748,9 +748,13 @@ class Grader:
             # G1.6 — standards regex compliance
             standards = fdata["standards"]
             for s in standards:
-                fw = s.get("framework") if isinstance(s, dict) else None
-                rid = s.get("requirement_id") if isinstance(s, dict) else None
+                if not isinstance(s, dict):
+                    self.emit("G1.6", "FAIL", f"{fid}: standards row missing framework/requirement_id")
+                    continue
+                fw = s.get("framework")
+                rid = s.get("requirement_id")
                 if not fw or not rid:
+                    self.emit("G1.6", "FAIL", f"{fid}: standards row missing framework/requirement_id")
                     continue
                 if fw not in CLOSED_VOCAB:
                     self.emit("G1.6", "FAIL", f"{fid}: unknown framework '{fw}' in standards")

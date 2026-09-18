@@ -1,0 +1,19 @@
+schema_version: 2
+skill_version: paladin-probe@v3
+repo: https://github.com/example/sample
+consent:
+  authorized: true
+  authorized_by: senior-sre
+  authorized_at: 2026-07-29T10:00:00Z
+  scope: auth + users endpoints
+environment: staging
+probe_plan:
+  - phase: auth
+    target: /auth/login
+    method: POST
+    payloads:
+      - "username=admin&password=wrong"
+      - "username=admin&password=admin"
+  - phase: users
+    target: /api/users
+    method: GET
