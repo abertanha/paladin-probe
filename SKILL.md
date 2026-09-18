@@ -193,8 +193,9 @@ scripts/probe.sh checkpoint --read
 ```
 
 One file per boundary (`sessions/<date>_checkpoint-<phase>.md`); rewriting a
-phase leaves others intact. Counts from disk, not memory; `session_id` reused;
-`consent_snapshot` frozen for the session.
+phase leaves others intact. Counts from disk, not memory; `session_id` reuses
+the latest checkpoint's id unless `--session-id` is given — a new id re-copies
+`consent_snapshot` from `config.yaml`, the same id keeps it frozen.
 
 ### Resume gate (anti-anchoring)
 
