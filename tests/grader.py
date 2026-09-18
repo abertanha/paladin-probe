@@ -1343,14 +1343,13 @@ class Grader:
             self.emit("G5.3", "FAIL", "config.yaml not found")
 
         # G5.4 — probe-date consistency across REPORT.md, surface.md, threat-model.md
-        DATE_RE = re.compile(r"(?:\*\*)?(?:Probe date|probe_date|Date):(?:\*\*)?\s*(\d{4}-\d{2}-\d{2})")
         dates_found = {}
         for fname in ("REPORT.md", "surface.md", "threat-model.md"):
             fpath = self.rt / fname
             if fpath.exists():
                 text = read(fpath)
                 if text:
-                    m = DATE_RE.search(text)
+                    m = _PROBE_DATE_RE.search(text)
                     if m:
                         dates_found[fname] = m.group(1)
         if len(set(dates_found.values())) > 1:
