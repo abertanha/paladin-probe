@@ -102,8 +102,8 @@ the change being reviewed.
 
 > **Re-verification is the mirror case:** when re-running against changed
 > code, derive findings fresh BEFORE opening prior findings/REPORT/threat-model,
-> then diff (New/Confirmed/Healed/Regressed/Escalated). See SKILL.md
-> "Fresh-Derive-Then-Diff".
+> then diff (New/Confirmed/Healed/Regressed/Escalated). See
+> `cross-skill-contract.md` (Phase D).
 
 ### False Positive History
 
@@ -185,7 +185,8 @@ standards:                      # Compliance framework mappings — MAX 5 ROWS
 > Tier 2 (`blast_radius`, `detection_difficulty`, `target_version`) for Open
 > High/Medium only; Tier 3 (`kev_listed`, `epss_score`, `exploited_in_wild`)
 > for CVE-bearing High+ only. Low/Medium without a CVE MUST omit Tier 3 keys;
-> FP/Duplicate MUST omit Tier 2 keys. See SKILL.md "Finding Format — Frontmatter tiers".
+> FP/Duplicate MUST omit Tier 2 keys. The Tier 1 core is exactly the grader's
+> G1.1 required-key set, so a lean frontmatter can never fail G1.1.
 
 ## Reproduction
 
@@ -429,3 +430,161 @@ items:
 ```
 
 These are never reported as findings — they require human judgment.
+
+---
+
+## Artifact Tree & Date Rule
+
+```
+.red-team/
+├── remediation-requirements.md    # All findings as requirements
+├── suspicious.md                   # Medium-confidence items (manual review)
+├── surface.md                      # Attack surface
+├── threat-model.md                 # STRIDE model
+├── evidence/                       # Wrapper-captured artifacts (manifest-hashed)
+│   └── RT-NNN/
+│       ├── <timestamp>-request.http
+│       ├── <timestamp>-response.http
+│       ├── <timestamp>-diff.txt                # probe.sh diff (differential oracle)
+│       ├── <timestamp>-<kind>.instrumented.md  # probe.sh capture
+│       └── SKIPPED.md                          # if the probe was intentionally skipped
+├── chains/                         # /probe chain artifacts
+│   └── CH-NNN.md
+├── findings/                       # Full detail per finding
+│   ├── YYYY-MM-DD_rt-NNN.md
+│   └── index.md
+└── sessions/
+    └── YYYY-MM-DD_topic.md
+```
+
+> **Date source of truth:** `REPORT.md` is the canonical probe-date artifact.
+> `surface.md` and `threat-model.md` MUST NOT carry independent probe-date lines.
+> They reference REPORT.md via `**Date:** See [REPORT.md](REPORT.md)`.
+> This prevents date drift across reports on re-verification. The grader (G5.4)
+> warns if dates diverge across the three files.
+
+---
+
+## REPORT.md Format
+
+`REPORT.md` is the canonical probe-date artifact and the human-facing summary.
+The grader (G5.2) validates it against the findings — the format below is REQUIRED:
+
+```markdown
+# Paladin Probe Report — <project short name>
+
+**Probe Date:** YYYY-MM-DD
+**Target:** <url or "local">
+**Skill Version:** paladin-probe@v3
+**Method:** <one line: "Read-only + code analysis" | "Live probes + code analysis" | ...> (effort: <standard|deep|exhaustive>)
+
+## Summary
+
+| Severity | Open | Static-Only (Pending Verification) | Fixed |
+|----------|------|-----------------------------------|-------|
+| Critical | <N>  | <N>                               | <N>   |
+| High     | <N>  | <N>                               | <N>   |
+| Medium   | <N>  | <N>                               | <N>   |
+| Low      | <N>  | <N>                               | <N>   |
+
+### Critical
+
+| ID | Title | CWE | Route |
+|----|-------|-----|-------|
+| RT-001 | <title> | CWE-NNN | <route or "n/a"> |
+
+### High
+... (same row schema)
+
+### Medium
+...
+
+### Low
+...
+
+## Remediation
+
+See [remediation-requirements.md](remediation-requirements.md) for detailed
+functional and non-functional requirements per finding.
+
+## Exports
+
+- [CSV](exports/findings.csv)
+- [SARIF](exports/findings.sarif)
+- [VEX](exports/vex.json)
+```
+
+Rules:
+
+1. **Header block is required** — `Probe Date`, `Target`, `Skill Version`, `Method`
+   (one line each). Missing fields trigger a G5.2 WARN.
+2. **Summary table is required**, with a `Severity` header row. Column layout is
+   auto-detected from the header row (`Open`, `Static-Only...`, `Fixed`) — keep the
+   column names recognizable.
+3. **Column semantics**: `Open` counts findings with `status: Open` +
+   `confidence: High-verified`; `Static-Only` counts `status: Open` +
+   `confidence: High-static`; `Fixed` counts `status: Fixed/Remediated`.
+   `Duplicate` findings are excluded from all counts. G5.2 FAILs on any count
+   divergence.
+4. **Per-severity `### <Critical|High|Medium|Low>` sections are required** when
+   findings exist at that severity. Each holds a `| ID | Title | CWE | Route |`
+   table, one row per Open/Fixed/Remediated finding. FP findings may be listed or
+   omitted — not enforced.
+5. **Title column MUST exactly match** the finding's frontmatter `title`. G5.2
+   FAILs on any divergence.
+6. **Coverage**: every Open/Fixed/Remediated finding ID MUST appear in exactly one
+   severity table row; unknown IDs in REPORT tables are flagged.
+
+---
+
+## Compliance Exports (Phase E)
+
+Three standardized export formats generated from `.red-team/findings/` for external tooling.
+
+### Formats
+
+| Format | File | Schema | Consumption |
+|--------|------|--------|-------------|
+| CSV | `exports/findings.csv` | Flat table | Spreadsheets, dashboards, Excel |
+| SARIF 2.1.0 | `exports/findings.sarif` | OASIS SARIF | GitHub Code Scanning, VS Code, CI gate |
+| OpenVEX 0.2.0 | `exports/vex.json` | OpenVEX | SBOM integration, GRC platforms |
+
+### OpenVEX Status Mapping
+
+When generating VEX statements, map from the finding's `status` + `confidence` to
+the OpenVEX `status` field:
+
+| Finding Status | Finding Confidence | VEX Status |
+|---|---|---|
+| Open | High-verified | `known_affected` |
+| Open | High-static | `under_investigation` |
+| Open | Medium | `under_investigation` |
+| False Positive | any | `not_affected` |
+| Fixed / Remediated | any | `fixed` |
+| Accepted | any | `not_affected` |
+| Regressed | any | `known_affected` |
+
+**Rule:** All Open VEX statuses other than `known_affected` (i.e. `under_investigation`)
+MUST carry a `justification` field explaining why the finding isn't yet confirmed
+affected. `not_affected` MUST carry a `justification` from the OpenVEX v0.2
+vocabulary.
+
+### VEX `cve` vs `aliases` Rule
+
+The `vulnerability.cve` field is reserved for CVE identifiers only. CWE identifiers
+MUST appear in `vulnerability.aliases` prefixed with `CWE:` — e.g. `"CWE:CWE-770"`.
+The grader (G3.4) rejects any VEX file where `cve` contains a CWE id.
+
+### Generation
+
+Exports are regenerated automatically by the agent **every time a finding is
+added, modified, or removed** — not just on explicit `/probe export`. Each finding
+in `.red-team/findings/` is parsed and mapped to all three formats:
+
+- **CSV** — one row per finding with id, title, category, severity, CWE, status, confidence, location
+- **SARIF** — one `rule` per CWE + one `result` per finding; levels: error (High), warning (Medium), note (Low), none (FP)
+- **OpenVEX** — one `statement` per finding; status: `fixed`, `under_investigation`, `not_affected`
+
+### Regeneration
+
+Run `/probe export` to regenerate all three formats after any finding change.

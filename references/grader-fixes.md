@@ -275,7 +275,7 @@ skipped-no-harness`.
 **Fix (add statement):**
 
 1. Read finding `id`, `title`, `cwe`, `standards`, `status`, `confidence`.
-2. Determine VEX status per the OpenVEX Mapping table in SKILL.md:
+2. Determine VEX status per the OpenVEX Mapping table in `references/findings-format.md`:
    - High-verified Open → `known_affected`
    - High-static Open → `under_investigation`
    - False Positive → `not_affected`
@@ -312,7 +312,7 @@ For each affected statement in `vex.json`:
 For each affected statement in `vex.json`:
 
 1. Look up the finding's `confidence` and `status` from the finding file frontmatter or traceability.json.
-2. Map to the correct VEX status per the OpenVEX Mapping table in SKILL.md.
+2. Map to the correct VEX status per the OpenVEX Mapping table in `references/findings-format.md`.
 3. Replace `"status": "<old>"` with `"status": "<correct>"`.
 4. If changing FROM `under_investigation` TO `known_affected`, also remove `"justification": "requires_assessment"`.
 
@@ -327,7 +327,7 @@ For each affected statement in `vex.json`:
 3. **If findings haven't changed** (no `status` or `confidence` frontmatter edits since the last export), exports are still content-correct. Bump timestamps to now:
    - VEX: update `"timestamp"` to ISO now
    - SARIF: update `"invocations[0].startTime"`, `"invocations[0].endTime"`, and `"properties.generated_at"` to ISO now
-4. **If findings HAVE changed**, regenerate exports from scratch per Phase E in SKILL.md, then bump timestamps.
+4. **If findings HAVE changed**, regenerate exports from scratch per Phase E in `references/findings-format.md`, then bump timestamps.
 5. Save both files.
 
 ---

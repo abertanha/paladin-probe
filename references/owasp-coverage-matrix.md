@@ -19,6 +19,23 @@ Before writing a finding's `standards:` block:
 
 ---
 
+## Stack profile (write once, early)
+
+After the initial repo/scope scan identifies the target stack, the agent MUST
+record it in `.red-team/config.yaml` under the optional key `stack_profile:` —
+it is informational only (the grader G5.3 validates just `schema_version` /
+`skill_version`), and it drives the reference-loading decisions in SKILL.md's
+Loading Discipline table:
+
+```yaml
+stack_profile:
+  languages: [Go]
+  frameworks: [chi, PostgreSQL]
+  components: [K8s, S3, GitHub Actions]
+```
+
+---
+
 ## Authentication & Identity
 
 ### auth-abuse.md

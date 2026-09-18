@@ -276,11 +276,11 @@ TRIGGER
    │
    ▼
 0. (Session-wide triggers only — /probe re-verify without an RT-id,
-   /probe verify-all) Derive findings fresh BEFORE reading prior artifacts:
-   run RECON → MODEL → PROBE → VERIFY blind, grade the fresh pass, THEN
-   diff against priors (New/Confirmed/Healed/Regressed/Escalated). See
-   SKILL.md "Fresh-Derive-Then-Diff". Targeted RT-NNN triggers skip this
-   and start at 1.
+    /probe verify-all) Derive findings fresh BEFORE reading prior artifacts:
+    run RECON → MODEL → PROBE → VERIFY blind, grade the fresh pass, THEN
+    diff against priors (New/Confirmed/Healed/Regressed/Escalated). See
+    "Fresh-Derive-Then-Diff" below. Targeted RT-NNN triggers skip this
+    and start at 1.
    │
    ▼
 1. Read finding RT-NNN — get location, requirements, acceptance_criteria
@@ -325,6 +325,37 @@ Fixed  ──re-verify──►  Fixed (no change)
 Regressed ──re-verify──►  Fixed
                          Regressed (still broken, escalate)
 ```
+
+### Fresh-Derive-Then-Diff (anti-anchoring)
+
+On session-wide re-verification (`/probe re-verify` without an RT-id,
+`/probe verify-all`), derive findings BEFORE looking at prior conclusions —
+otherwise you rationalize the old list instead of auditing it.
+
+1. **Derive blind.** Run RECON → MODEL → PROBE → VERIFY on the current code
+   WITHOUT opening prior `findings/`, `REPORT.md`, or `threat-model.md`.
+   Allowed: `config.yaml` and `surface.md` (they define scope, not
+   conclusions). Mechanically: do not Read the prior artifacts until step 3.
+2. **Grade the fresh pass.** Skeptic gate + self-audit loop on the fresh
+   findings as if they were the only ones.
+3. **Diff against priors.** Re-open the priors and reconcile each side:
+
+   | Disposition | Meaning | Action |
+   |-------------|---------|--------|
+   | New | fresh finding, no prior | Write under a new RT-id |
+   | Confirmed | prior finding re-derived | Keep; record re-verified date |
+   | Healed | prior Open NOT re-derived | Investigate the fix; if real → `status: Fixed` |
+   | Regressed | prior Fixed re-derived | `status: Regressed`, escalate priority |
+   | Escalated | same finding, worse severity/category | Update; record what changed |
+
+4. **Non-re-derivable priors.** A prior finding the fresh pass cannot produce
+   (depended on a runtime condition, a rotated credential, a probe consent
+   now denied) → flag in the session log for human review. Never silently
+   deleted, never silently kept Open.
+
+Rationale: prior-artifact anchoring is the strongest false-negative force in
+re-verification — reading "RT-003 was found" stops the search for RT-003's
+cause. Derive first, diff second, and the diff is honest.
 
 ### File Protocol
 
