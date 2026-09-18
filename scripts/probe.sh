@@ -181,6 +181,7 @@ cfg_bool() { # cfg_bool <key> — true only if value is true/yes/1
 #   dbstate:     p1=db_read_access.kind, p2=db_read_access.dsn_env
 #   test-oracle: p1=test_suite_oracle.command
 # Returns 0 when fully consented (all required fields present), 1 otherwise.
+# An unknown kind is never "fully consented" (returns 1, fields cleared).
 # Never outputs — each caller builds its own verbosity.
 consent_globals() {
     consent_p1= consent_p2=
@@ -199,6 +200,7 @@ consent_globals() {
             consent_p1="$(cfg_get test_suite_oracle.command)"
             [[ -n "$consent_p1" ]]
             ;;
+        *) return 1 ;;
     esac
 }
 
